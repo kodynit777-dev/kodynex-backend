@@ -2,7 +2,7 @@ version: 0.2
 env:
   variables:
     AWS_REGION: "me-central-1"
-    REPO_NAME: "kodynex"
+    REPO_NAME: "kodynex-backend"
 phases:
   pre_build:
     commands:
