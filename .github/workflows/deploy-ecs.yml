@@ -21,7 +21,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # (اختياري) بناء Nest محلي قبل Docker
+      # (اختياري) build لـ Nest قبل Docker
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -74,7 +74,7 @@ jobs:
             --task-definition "$(cat taskdef_arn.txt)" \
             --query 'taskDefinition' \
             --output json > taskdef.json
-          # طبع أسماء الكونتينرات للتأكد من الاسم
+          # اطبع أسماء الكونتينرات للتأكد من الاسم
           cat taskdef.json | jq '.containerDefinitions[].name'
 
       - name: Create new task definition revision with new image
