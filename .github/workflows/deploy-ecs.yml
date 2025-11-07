@@ -1,7 +1,9 @@
 name: Deploy to AWS ECS
+
 on:
   push:
     branches: [ main ]
+  workflow_dispatch:
 
 jobs:
   deploy:
@@ -41,6 +43,20 @@ jobs:
           git clone --branch "$CODECOMMIT_BRANCH" \
             https://git-codecommit.${AWS_REGION}.amazonaws.com/v1/repos/${CODECOMMIT_REPO} app
           ls -la app
+
+      # 👀 طباعة السكيمة + تحويل CRLF→LF (تشخيص)
+      - name: Show prisma schema (debug)
+        run: |
+          if [ -f app/prisma/schema.prisma ]; then
+            echo "=== cat app/prisma/schema.prisma ==="
+            cat app/prisma/schema.prisma
+            echo "=== hexdump first 64 bytes ==="
+            head -c 64 app/prisma/schema.prisma | hexdump -C || true
+            # طبّق تحويل CRLF إلى LF احتياطيًا
+            sed -i 's/\r$//' app/prisma/schema.prisma
+          else
+            echo "WARNING: app/prisma/schema.prisma not found"
+          fi
 
       - name: Login to ECR
         uses: aws-actions/amazon-ecr-login@v2
