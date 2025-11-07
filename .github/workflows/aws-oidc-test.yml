@@ -1,0 +1,22 @@
+name: Test OIDC
+on:
+  push:
+    branches: [ main ]   # ← لو فرعك مو "main" غيّر الاسم هنا
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write     # ضروري لـ OIDC
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS creds (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::440946410696:role/github-deploy-role   # ← غيّرها
+          aws-region: me-central-1
+
+      - name: Who am I
+        run: aws sts get-caller-identity
