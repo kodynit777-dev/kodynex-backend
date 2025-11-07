@@ -1,12 +1,6 @@
-# اطبع المحتوى الحالي للتأكد
-type prisma\schema.prisma
-
-# لو ما كان سطرين فقط، اكتب المحتوى الصحيح:
-$schema = @'
 generator client { provider = "prisma-client-js" }
-datasource db { provider = "postgresql"; url = env("postgresql://postgres:jsFbY9o%242N%28Rn9%3A.O%3EBXKF%21Pf5zk@kodynexdev.cluster-c9usymwiqc8r.me-central-1.rds.amazonaws.com:5432/kodynex?schema=public&sslmode=require") }
-'@
-Set-Content -Path prisma\schema.prisma -Value $schema -Encoding UTF8
 
-# تأكيد
-type prisma\schema.prisma
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
