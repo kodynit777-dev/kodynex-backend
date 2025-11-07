@@ -17,27 +17,30 @@ jobs:
       CLUSTER: "kodynex-cluster"
       SERVICE: "kodynex-api-service-o9yrg1gg"
       CONTAINER_NAME: "kodynex-backend"
+      CODECOMMIT_REPO: "kodynex"
+      CODECOMMIT_BRANCH: "main"
 
     steps:
       - uses: actions/checkout@v4
-
-      # ✅ بدون lockfile
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Install deps
-        run: npm install --no-audit --no-fund
-
-      - name: Build app
-        run: npm run build --if-present
 
       - name: Configure AWS creds (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::440946410696:role/github-deploy-role
           aws-region: ${{ env.AWS_REGION }}
+
+      # تفعيل هيلبر CodeCommit للـ HTTPS
+      - name: Configure CodeCommit credential helper
+        run: |
+          git config --global credential.helper '!aws codecommit credential-helper $@'
+          git config --global credential.UseHttpPath true
+
+      # سحب كود CodeCommit إلى app/
+      - name: Clone CodeCommit repo
+        run: |
+          git clone --branch "$CODECOMMIT_BRANCH" \
+            https://git-codecommit.${AWS_REGION}.amazonaws.com/v1/repos/${CODECOMMIT_REPO} app
+          ls -la app
 
       - name: Login to ECR
         uses: aws-actions/amazon-ecr-login@v2
@@ -47,10 +50,11 @@ jobs:
           aws ecr describe-repositories --repository-names "$ECR_REPO" >/dev/null 2>&1 || \
           aws ecr create-repository --repository-name "$ECR_REPO" >/dev/null
 
+      # 👇 نبني باستخدام Dockerfile الموجود داخل app/src/ مع كونتكست الجذر app/
       - name: Build & tag Docker image
         run: |
           IMAGE="$ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPO:${{ github.sha }}"
-          docker build -t "$IMAGE" .
+          docker build -f app/src/Dockerfile -t "$IMAGE" app
           echo "IMAGE=$IMAGE" >> $GITHUB_ENV
 
       - name: Push image to ECR
@@ -66,7 +70,6 @@ jobs:
             --services "$SERVICE" \
             --query 'services[0].taskDefinition' \
             --output text > taskdef_arn.txt
-          cat taskdef_arn.txt
 
       - name: Download current task definition JSON
         run: |
@@ -94,7 +97,6 @@ jobs:
             --output text > new_taskdef_arn.txt
 
           echo "NEW_TD_ARN=$(cat new_taskdef_arn.txt)" >> $GITHUB_ENV
-          echo "New TD: $(cat new_taskdef_arn.txt)"
 
       - name: Update ECS service to new task definition
         run: |
