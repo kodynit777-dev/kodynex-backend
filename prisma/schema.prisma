@@ -4,6 +4,6 @@ generator client { provider = "prisma-client-js" }
 
 datasource db {
   provider = "postgresql"   // غيّرها لـ "mysql" إذا قاعدتك MySQL
-  url      = env("DATABASE_URL")
+  url      = env("postgresql://postgres:jsFbY9o%242N%28Rn9%3A.O%3EBXKF%21Pf5zk@kodynexdev.cluster-c9usymwiqc8r.me-central-1.rds.amazonaws.com:5432/kodynex?schema=public&sslmode=require")
 }
 '@ | Out-File -FilePath prisma\schema.prisma -Encoding utf8 -NoNewline
