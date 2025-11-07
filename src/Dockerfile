@@ -1,39 +1,49 @@
-# ===== build stage =====
+# =====================================================
+# Stage 1 — Builder
+# =====================================================
 FROM node:20-alpine AS builder
+
 WORKDIR /app
 
-# نسخ package.json وتثبيت كل التبعيات (يشمل dev)
+# انسخ ملفات البكج أولاً (علشان cache)
 COPY package*.json ./
+
+# انسخ prisma قبل npm ci عشان postinstall ما يفشل
+COPY prisma ./prisma
+
+# ثبّت التبعيات كاملة (يشمل dev)
 RUN npm ci
 
-# انسخ مجلد prisma وشغّل prisma generate قبل البناء
-COPY prisma ./prisma
-RUN npx prisma generate --schema=prisma/schema.prisma
-
-# انسخ باقي السورس
+# انسخ باقي ملفات المشروع
 COPY . .
 
-# ابنِ المشروع
+# شغّل Prisma generate (لو ما اشتغل بالpostinstall)
+RUN npx prisma generate
+
+# أبنِ تطبيق Next.js
 RUN npm run build
 
-# ===== runtime stage =====
-FROM node:20-alpine AS runner
-WORKDIR /app
-ENV NODE_ENV=production
 
+# =====================================================
+# Stage 2 — Runner (صغير وخفيف)
+# =====================================================
+FROM node:20-alpine AS runner
+
+WORKDIR /app
+
+# نحتاج openssl و gcompat لتوافق Prisma في Alpine
 RUN apk add --no-cache openssl libc6-compat
 
-# نسخ ملفات التشغيل فقط
+# نسخ ملفات التشغيل فقط من الـ builder
 COPY --from=builder /app/package*.json ./
-RUN npm ci --omit=dev
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/.next ./.next
+COPY --from=builder /app/prisma ./prisma
+COPY --from=builder /app/public ./public
 
-# نسخ prisma client من مرحلة البناء
-COPY --from=builder /app/node_modules/.prisma /app/node_modules/.prisma
-COPY --from=builder /app/node_modules/@prisma /app/node_modules/@prisma
-
-# نسخ ناتج البناء وملف prisma schema
-COPY --from=builder /app/dist ./dist
-COPY prisma ./prisma
-
+# تعيين المنفذ الافتراضي
+ENV PORT=3000
 EXPOSE 3000
-CMD ["node", "dist/main.js"]
+
+# الأمر النهائي للتشغيل
+CMD ["npm", "start"]
