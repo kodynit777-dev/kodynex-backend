@@ -31,32 +31,33 @@ jobs:
           role-to-assume: arn:aws:iam::440946410696:role/github-deploy-role
           aws-region: ${{ env.AWS_REGION }}
 
-      # تفعيل هيلبر CodeCommit للـ HTTPS
       - name: Configure CodeCommit credential helper
         run: |
           git config --global credential.helper '!aws codecommit credential-helper $@'
           git config --global credential.UseHttpPath true
 
-      # سحب كود CodeCommit إلى app/
-      - name: Clone CodeCommit repo
+      - name: Clone CodeCommit repo into ./app
         run: |
           git clone --branch "$CODECOMMIT_BRANCH" \
             https://git-codecommit.${AWS_REGION}.amazonaws.com/v1/repos/${CODECOMMIT_REPO} app
           ls -la app
 
-      # 👀 طباعة السكيمة + تحويل CRLF→LF (تشخيص)
-      - name: Show prisma schema (debug)
+      # 🔧 Hotfix: اكتب سكيمة Prisma نظيفة داخل بيئة العداء قبل البناء
+      - name: Normalize prisma schema (hotfix)
         run: |
-          if [ -f app/prisma/schema.prisma ]; then
-            echo "=== cat app/prisma/schema.prisma ==="
-            cat app/prisma/schema.prisma
-            echo "=== hexdump first 64 bytes ==="
-            head -c 64 app/prisma/schema.prisma | hexdump -C || true
-            # طبّق تحويل CRLF إلى LF احتياطيًا
-            sed -i 's/\r$//' app/prisma/schema.prisma
-          else
-            echo "WARNING: app/prisma/schema.prisma not found"
-          fi
+          mkdir -p app/prisma
+          cat > app/prisma/schema.prisma <<'EOF'
+          generator client {
+            provider = "prisma-client-js"
+          }
+
+          datasource db {
+            provider = "postgresql"
+            url      = env("DATABASE_URL")
+          }
+          EOF
+          echo "=== final schema ==="
+          cat app/prisma/schema.prisma
 
       - name: Login to ECR
         uses: aws-actions/amazon-ecr-login@v2
@@ -66,7 +67,6 @@ jobs:
           aws ecr describe-repositories --repository-names "$ECR_REPO" >/dev/null 2>&1 || \
           aws ecr create-repository --repository-name "$ECR_REPO" >/dev/null
 
-      # 👇 نبني باستخدام Dockerfile الموجود داخل app/src/ مع كونتكست الجذر app/
       - name: Build & tag Docker image
         run: |
           IMAGE="$ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPO:${{ github.sha }}"
