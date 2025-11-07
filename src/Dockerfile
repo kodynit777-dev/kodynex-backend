@@ -1,41 +1,29 @@
-# ---------- builder ----------
+# ====== deps/builder ======
 FROM node:20-alpine AS builder
 WORKDIR /app
 
-# 1) فقط ملفات البكج أولاً عشان الكاش
-COPY package*.json ./
+# 1) باكدجات النظام
+RUN apk add --no-cache openssl libc6-compat
 
-# 2) تثبيت الاعتمادات (يتضمن postinstall: prisma generate)
+# 2) انسخ ملفات الحزم + مجلد prisma قبل npm ci
+COPY package.json package-lock.json* ./
+COPY prisma ./prisma
+
+# 3) ثبّت الاعتمادات (يشمل postinstall: prisma generate)
 RUN npm ci
 
-# 3) نسخ سكيمة بريزما وتشغيل generate (اختياري لأن postinstall سوّاها)
-COPY prisma ./prisma
-RUN npx prisma generate
-
-# 4) نسخ بقية السورس وبناء NestJS
+# 4) انسخ باقي السورس وابنِ
 COPY . .
 RUN npm run build
 
-# 5) إزالة dev deps للصورة النهائية
-RUN npm prune --omit=dev
-
-# ---------- runner ----------
+# ====== runner ======
 FROM node:20-alpine AS runner
 WORKDIR /app
-
-# (اختياري) حزم لازمة أحياناً لـ Prisma مع Alpine
 RUN apk add --no-cache openssl libc6-compat
-
-# 6) نسخ الملفات النهائية فقط
-COPY --from=builder /app/package*.json ./
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/prisma ./prisma
-# ملاحظة:
-# - لو عندك مجلد public فعلاً (يُخدم عبر ServeStaticModule)، انسخه من السورس:
-#   COPY --from=builder /app/public ./public
-# - غير كذا "لا" تضيفه.
-
 ENV NODE_ENV=production
+
+# لو تستخدم إخراج Next.js العادي:
+COPY --from=builder /app ./
+
 EXPOSE 3000
-CMD ["node", "dist/main.js"]
+CMD ["npm","run","start"]
