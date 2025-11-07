@@ -21,14 +21,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # (اختياري) build لـ Nest قبل Docker
+      # ✅ بدون lockfile
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
+
       - name: Install deps
-        run: npm ci
+        run: npm install --no-audit --no-fund
+
       - name: Build app
         run: npm run build --if-present
 
@@ -58,7 +59,6 @@ jobs:
       - name: Install jq
         run: sudo apt-get update && sudo apt-get install -y jq
 
-      # نجيب تعريف المهمة الحالي من الخدمة
       - name: Fetch current task definition ARN from service
         run: |
           aws ecs describe-services \
@@ -74,7 +74,6 @@ jobs:
             --task-definition "$(cat taskdef_arn.txt)" \
             --query 'taskDefinition' \
             --output json > taskdef.json
-          # اطبع أسماء الكونتينرات للتأكد من الاسم
           cat taskdef.json | jq '.containerDefinitions[].name'
 
       - name: Create new task definition revision with new image
