@@ -2,16 +2,17 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
 
-# انسخ الحزم + prisma أولاً
+# ثبّت الحزم
 COPY package*.json ./
-COPY prisma ./prisma
-
-# ثبّت واعمل generate قبل build
 RUN npm ci
-RUN npx prisma generate
 
-# انسخ بقية السورس وابنِ
+# انسخ بقية السورس
 COPY . .
+
+# شغّل prisma generate إذا المجلد موجود
+RUN if [ -f prisma/schema.prisma ]; then npx prisma generate; else echo "No prisma/schema.prisma, skipping generate"; fi
+
+# ابنِ المشروع
 RUN npm run build
 
 # قلّص الديف ديبندنسيز
@@ -22,13 +23,13 @@ FROM node:20-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 
-# حِزم مطلوبة لـ Prisma على Alpine
+# مكاتب مطلوبة مع Prisma غالباً
 RUN apk add --no-cache openssl libc6-compat
 
-# انسخ ما نحتاجه للتشغيل فقط
+# انسخ ما نحتاجه للتشغيل
 COPY --from=builder /app/package*.json ./
 COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/prisma ./prisma
+# لا تنسخ prisma هنا (غير موجود وقد لا يلزم وقت التشغيل)
 COPY --from=builder /app/dist ./dist
 
 EXPOSE 3000
