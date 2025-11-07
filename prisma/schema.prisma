@@ -7,4 +7,4 @@ datasource db {
 }
 '@ | Set-Content -Path prisma\schema.prisma -Encoding utf8
 
-type prisma\schema.prisma   # تأكد أن الملف ما فيه إلا النص اللي فوق
+type prisma\schema.prisma  
