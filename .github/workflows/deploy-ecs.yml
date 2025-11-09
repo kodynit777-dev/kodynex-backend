@@ -21,7 +21,7 @@ jobs:
       CONTAINER_NAME: "kodynex-backend"
       CODECOMMIT_REPO: "kodynex"
       CODECOMMIT_BRANCH: "main"
-      LOG_GROUP: "/ecs/kodynex-api" # يجب أن يطابق awslogs-group في الـ Task Definition
+      LOG_GROUP: "/ecs/kodynex-api" # يجب أن يطابق awslogs-group في Task Definition
 
     steps:
       - uses: actions/checkout@v4
@@ -60,7 +60,7 @@ jobs:
       - name: Push image to ECR
         run: docker push "$IMAGE"
 
-      - name: Install helpers (jq)
+      - name: Install jq
         run: |
           sudo apt-get update
           sudo apt-get install -y jq
@@ -117,22 +117,19 @@ jobs:
           echo "assign=$ASSIGN" >> $GITHUB_OUTPUT
 
       # ====== Self-heal + Migrate (RunTask) ======
-      # يعالج أي فشل سابق لنفس الهجرة ثم يطبق الهجرات.
+      # نحل فشل الهجرة السابقة ثم نطبق الهجرات — بدون backslashes داخل jq
       - name: Create migrate overrides
         run: |
           jq -n --arg name "$CONTAINER_NAME" '{
-            containerOverrides:[{
-              name:$name,
-              environment:[
+            containerOverrides: [{
+              name: $name,
+              environment: [
                 {name:"PRISMA_LOG_LEVEL",value:"info"},
                 {name:"RUST_LOG",value:"info"}
               ],
-              command:["/bin/sh","-lc",
-                "set -e; \
-                 echo \"== resolve failed migration as rolled-back ==\"; \
-                 npx prisma migrate resolve --rolled-back 20251109_phone_auth_init || true; \
-                 echo \"== prisma migrate deploy ==\"; \
-                 npx prisma migrate deploy"
+              command: [
+                "/bin/sh","-lc",
+                "set -e; echo == resolve failed migration as rolled-back ==; npx prisma migrate resolve --rolled-back 20251109_phone_auth_init || true; echo == prisma migrate deploy ==; npx prisma migrate deploy"
               ]
             }]
           }' > overrides-migrate.json
@@ -150,10 +147,8 @@ jobs:
 
           echo "task_arn=$TASK_ARN" >> $GITHUB_OUTPUT
 
-          # انتظر توقف المهمة
           aws ecs wait tasks-stopped --cluster "$CLUSTER" --tasks "$TASK_ARN"
 
-          # تحقّق من كود الخروج + اسحب لوقات CloudWatch إن وُجدت
           DESC=$(aws ecs describe-tasks --cluster "$CLUSTER" --tasks "$TASK_ARN" --output json)
           echo "$DESC" > task-desc.json
           EXIT=$(jq -r '.tasks[0].containers[0].exitCode // "null"' task-desc.json)
