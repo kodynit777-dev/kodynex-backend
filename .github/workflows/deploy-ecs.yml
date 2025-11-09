@@ -102,7 +102,6 @@ jobs:
 
           echo "arn=$NEW_TD_ARN" >> $GITHUB_OUTPUT
 
-      # 🟢 شغّل Prisma migrate على نفس الـ Task Definition (الصورة الجديدة) قبل تحديث الخدمة
       - name: Get service network (subnets/sg)
         id: net
         run: |
@@ -116,10 +115,12 @@ jobs:
           echo "sgs=$SGS" >> $GITHUB_OUTPUT
           echo "assign=$ASSIGN" >> $GITHUB_OUTPUT
 
+      # 🟢 تشغيل Prisma migrate داخل RunTask مع تشخيصات مفصلة (sh -lc + CloudWatch Logs)
       - name: Run Prisma migrate (as RunTask)
         id: migrate
         run: |
-          echo '{"containerOverrides":[{"name":"'"$CONTAINER_NAME"'","command":["npx","prisma","migrate","deploy"]}]}' > overrides.json
+          # نستخدم شِل لضمان تحميل المتغيرات والسلوك المتوقع
+          echo '{"containerOverrides":[{"name":"'"$CONTAINER_NAME"'","command":["/bin/sh","-lc","npx prisma migrate deploy"]}]}' > overrides.json
 
           TASK_ARN=$(aws ecs run-task \
             --cluster "$CLUSTER" \
@@ -134,14 +135,35 @@ jobs:
           # انتظر توقف المهمة
           aws ecs wait tasks-stopped --cluster "$CLUSTER" --tasks "$TASK_ARN"
 
-          # تحقّق من كود الخروج
-          EXIT=$(aws ecs describe-tasks --cluster "$CLUSTER" --tasks "$TASK_ARN" \
-                  --query 'tasks[0].containers[0].exitCode' --output text)
-          echo "exit_code=$EXIT" >> $GITHUB_OUTPUT
+          # أوصاف مهمّة للتشخيص
+          DESC=$(aws ecs describe-tasks --cluster "$CLUSTER" --tasks "$TASK_ARN" --output json)
+          echo "$DESC" > task-desc.json
+          EXIT=$(jq -r '.tasks[0].containers[0].exitCode // "null"' task-desc.json)
+          STOP=$(jq -r '.tasks[0].stoppedReason // ""' task-desc.json)
+          CNAME=$(jq -r '.tasks[0].containers[0].name' task-desc.json)
+          STREAM=$(jq -r '.tasks[0].containers[0].logStreamName // ""' task-desc.json)
+          echo "Container: $CNAME"
+          echo "StoppedReason: $STOP"
+          echo "ExitCode: $EXIT"
+          echo "LogStream: $STREAM"
+
+          # اطبع آخر 200 سطر من CloudWatch Logs (لو الـ logStreamName موجود)
+          if [ -n "$STREAM" ] && [ "$STREAM" != "null" ]; then
+            echo "---- CloudWatch Logs (tail) ----"
+            aws logs get-log-events \
+              --log-group-name "/ecs/kodynex-api" \
+              --log-stream-name "$STREAM" \
+              --limit 200 \
+              --query 'events[].message' \
+              --output text || true
+            echo "--------------------------------"
+          else
+            echo "No logStreamName found on container — check awslogs in task definition."
+          fi
+
+          # فشل الهجرة؟ نفشل الجوب برسالة واضحة
           if [ "$EXIT" != "0" ]; then
             echo "❌ Prisma migrate failed, exitCode=$EXIT"
-            aws ecs describe-tasks --cluster "$CLUSTER" --tasks "$TASK_ARN" \
-              --query 'tasks[0].{stoppedReason:stoppedReason,container:containers[0].reason}' --output table || true
             exit 1
           fi
 
