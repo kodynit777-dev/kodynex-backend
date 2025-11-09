@@ -21,7 +21,7 @@ jobs:
       CONTAINER_NAME: "kodynex-backend"
       CODECOMMIT_REPO: "kodynex"
       CODECOMMIT_BRANCH: "main"
-      LOG_GROUP: "/ecs/kodynex-api" # لازم يطابق awslogs-group في task definition
+      LOG_GROUP: "/ecs/kodynex-api" # يجب أن يطابق awslogs-group في الـ Task Definition
 
     steps:
       - uses: actions/checkout@v4
@@ -43,7 +43,6 @@ jobs:
             https://git-codecommit.${AWS_REGION}.amazonaws.com/v1/repos/${CODECOMMIT_REPO} app
           ls -la app
 
-      # لا نعدّل سكيمة Prisma هنا؛ نستخدم الملفات من المستودع
       - name: Login to ECR
         uses: aws-actions/amazon-ecr-login@v2
 
@@ -61,10 +60,10 @@ jobs:
       - name: Push image to ECR
         run: docker push "$IMAGE"
 
-      - name: Install helpers (jq + python)
+      - name: Install helpers (jq)
         run: |
           sudo apt-get update
-          sudo apt-get install -y jq python3
+          sudo apt-get install -y jq
 
       - name: Fetch current task definition ARN from service
         id: cur
@@ -118,41 +117,25 @@ jobs:
           echo "assign=$ASSIGN" >> $GITHUB_OUTPUT
 
       # ====== Self-heal + Migrate (RunTask) ======
-      # يشيّك لو في MigrationFailure باسم 20251109_phone_auth_init ويعمل resolve ثم deploy
-      # غيّر RESOLVE_MODE إلى "applied" إذا كنت متأكد أن التغييرات موجودة فعلاً في DB
-      - name: Create self-heal+migrate overrides (Python)
+      # يعالج أي فشل سابق لنفس الهجرة ثم يطبق الهجرات.
+      - name: Create migrate overrides
         run: |
-          python3 - <<'PY'
-          import json, os
-          RESOLVE_MODE = "rolled-back"  # "rolled-back" أو "applied" حسب حالتك
-          MIG_NAME = "20251109_phone_auth_init"
-
-          # سكربت الشِل داخل الكونتينر
-          cmd = (
-            "set -e; "
-            "echo '== Prisma migrate status (json) =='; "
-            "npx prisma migrate status --json > /tmp/mstat.json || true; "
-            "if grep -q '\"MigrationFailure\"' /tmp/mstat.json; then "
-            f"  echo 'Found MigrationFailure; resolving {MIG_NAME} as {RESOLVE_MODE}'; "
-            f"  npx prisma migrate resolve --{RESOLVE_MODE} {MIG_NAME}; "
-            "fi; "
-            "echo '== prisma migrate deploy =='; "
-            "npx prisma migrate deploy"
-          )
-
-          payload = {
-            "containerOverrides": [{
-              "name": os.environ["CONTAINER_NAME"],
-              "environment": [
-                {"name":"PRISMA_LOG_LEVEL","value":"info"},
-                {"name":"RUST_LOG","value":"info"}
+          jq -n --arg name "$CONTAINER_NAME" '{
+            containerOverrides:[{
+              name:$name,
+              environment:[
+                {name:"PRISMA_LOG_LEVEL",value:"info"},
+                {name:"RUST_LOG",value:"info"}
               ],
-              "command": ["/bin/sh","-lc", cmd]
+              command:["/bin/sh","-lc",
+                "set -e; \
+                 echo \"== resolve failed migration as rolled-back ==\"; \
+                 npx prisma migrate resolve --rolled-back 20251109_phone_auth_init || true; \
+                 echo \"== prisma migrate deploy ==\"; \
+                 npx prisma migrate deploy"
+              ]
             }]
-          }
-          with open('overrides-migrate.json','w') as f:
-            json.dump(payload, f)
-          PY
+          }' > overrides-migrate.json
 
       - name: Run Prisma migrate (self-heal)
         id: migrate
