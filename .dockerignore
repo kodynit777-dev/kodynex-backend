@@ -1,6 +1,12 @@
 .git
+.history
 node_modules
 dist
-npm-debug.log
 Dockerfile
-buildspec.yml
+.gitignore
+README.md
+.eslintrc*
+.prettierrc*
+coverage
+**/*.log
+.tmp
