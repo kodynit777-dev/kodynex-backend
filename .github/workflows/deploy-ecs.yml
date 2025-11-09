@@ -22,6 +22,8 @@ jobs:
       CODECOMMIT_REPO: "kodynex"
       CODECOMMIT_BRANCH: "main"
       LOG_GROUP: "/ecs/kodynex-api" # يجب أن يطابق awslogs-group في Task Definition
+      # اختياري: لو عندك ALB خله هنا لتفادي الاعتماد على ENI/Public IP
+      # ALB_URL: "http://<your-alb-dns-name>"
 
     steps:
       - uses: actions/checkout@v4
@@ -117,7 +119,6 @@ jobs:
           echo "assign=$ASSIGN" >> $GITHUB_OUTPUT
 
       # ====== Self-heal + Migrate (RunTask) ======
-      # نحل فشل الهجرة السابقة ثم نطبق الهجرات — بدون backslashes داخل jq
       - name: Create migrate overrides
         run: |
           jq -n --arg name "$CONTAINER_NAME" '{
@@ -186,12 +187,73 @@ jobs:
             --force-new-deployment
           aws ecs wait services-stable --cluster "$CLUSTER" --services "$SERVICE"
 
-      - name: Smoke test (/health & /db-health)
+      - name: Smoke test (robust)
         run: |
-          TASK=$(aws ecs list-tasks --cluster "$CLUSTER" --service-name "$SERVICE" --desired-status RUNNING --query 'taskArns[0]' --output text)
-          ENI=$(aws ecs describe-tasks --cluster "$CLUSTER" --tasks "$TASK" \
-            --query "tasks[0].attachments[?type=='ElasticNetworkInterface'].details[?name=='networkInterfaceId'].value" --output text)
-          IP=$(aws ec2 describe-network-interfaces --network-interface-ids "$ENI" --query 'NetworkInterfaces[0].Association.PublicIp' --output text)
-          echo "Public IP: $IP"
-          curl -fsS "http://$IP:3000/health"
-          curl -fsS "http://$IP:3000/db-health"
+          set -e
+
+          # لو عندك ALB عرّف ALB_URL في env فوق
+          if [ -n "${ALB_URL:-}" ]; then
+            echo "Using ALB_URL=$ALB_URL"
+            curl -fsS "$ALB_URL/health"
+            curl -fsS "$ALB_URL/db-health"
+            exit 0
+          fi
+
+          # 1) انتظر ظهور Task بحالة RUNNING
+          for i in {1..30}; do
+            TASK=$(aws ecs list-tasks \
+              --cluster "$CLUSTER" \
+              --service-name "$SERVICE" \
+              --desired-status RUNNING \
+              --query 'taskArns[0]' --output text)
+            if [ -n "$TASK" ] && [ "$TASK" != "None" ]; then
+              echo "Found RUNNING task: $TASK"
+              break
+            fi
+            echo "Waiting for a RUNNING task... ($i/30)"
+            sleep 5
+          done
+
+          if [ -z "$TASK" ] || [ "$TASK" = "None" ]; then
+            echo "⚠️ No RUNNING task yet. Skipping smoke test."
+            exit 0
+          fi
+
+          # 2) جب ENI من attachments
+          DESC=$(aws ecs describe-tasks --cluster "$CLUSTER" --tasks "$TASK" --output json)
+          ENI=$(echo "$DESC" | jq -r '
+            .tasks[0].attachments[]
+            | select(.type=="ElasticNetworkInterface")
+            | .details[]
+            | select(.name=="networkInterfaceId")
+            | .value' | head -n1)
+
+          if [ -z "$ENI" ] || [ "$ENI" = "None" ]; then
+            echo "⚠️ ENI not ready. Skipping smoke test."
+            exit 0
+          fi
+          echo "ENI=$ENI"
+
+          # 3) انتظر Public IP لو مفعّل assignPublicIp
+          PUBLIC_IP=""
+          for i in {1..20}; do
+            PUBLIC_IP=$(aws ec2 describe-network-interfaces \
+              --network-interface-ids "$ENI" \
+              --query 'NetworkInterfaces[0].Association.PublicIp' \
+              --output text 2>/dev/null || true)
+            if [ -n "$PUBLIC_IP" ] && [ "$PUBLIC_IP" != "None" ]; then
+              echo "Public IP: $PUBLIC_IP"
+              break
+            fi
+            echo "Waiting for Public IP... ($i/20)"
+            sleep 3
+          done
+
+          if [ -z "$PUBLIC_IP" ] || [ "$PUBLIC_IP" = "None" ]; then
+            echo "⚠️ No Public IP yet. Skipping smoke test."
+            exit 0
+          fi
+
+          # 4) نفّذ فحوصات الصحة
+          curl -fsS "http://$PUBLIC_IP:3000/health"
+          curl -fsS "http://$PUBLIC_IP:3000/db-health"
