@@ -42,7 +42,7 @@ jobs:
             https://git-codecommit.${AWS_REGION}.amazonaws.com/v1/repos/${CODECOMMIT_REPO} app
           ls -la app
 
-      # ⚠️ لا نكتب أو نعدّل سكيمة Prisma هنا — نعتمد على الملفات الموجودة في المستودع.
+      # ⚠️ لا نعدّل سكيمة Prisma هنا. نعتمد على اللي دافعته في CodeCommit.
 
       - name: Login to ECR
         uses: aws-actions/amazon-ecr-login@v2
@@ -81,14 +81,14 @@ jobs:
             --query 'taskDefinition' \
             --output json > taskdef.json
 
-          # استخرج اسم/جروب اللوق للكونتينر الهدف لاستخدامه لاحقًا
+          # استخرج مجموعة اللوق من الكونتينر الهدف (لازم awslogs يكون مفعّل في TD)
           LOG_GROUP=$(jq -r '.containerDefinitions[] | select(.name=="'"$CONTAINER_NAME"'") | .logConfiguration.options["awslogs-group"] // empty' taskdef.json)
           echo "LOG_GROUP=$LOG_GROUP" >> $GITHUB_ENV
 
           echo "Container names in TD:"
           cat taskdef.json | jq -r '.containerDefinitions[].name'
 
-      - name: Create new task definition revision with new image (preserve roles/secrets/logs)
+      - name: Create new task definition revision with new image
         id: newtd
         run: |
           cat taskdef.json \
@@ -98,8 +98,8 @@ jobs:
                   if .name == $NAME then .image = $IMG | . else . end
                 )
               )
-              | del(.taskDefinitionArn,.revision,.status,.requiresAttributes,.compatibilities,.registeredAt,.registeredBy)
-            ' > taskdef-new.json
+              | del(.taskDefinitionArn,.revision,.status,.requiresAttributes,.compatibilities,.registeredAt,.registeredBy)' \
+          > taskdef-new.json
 
           NEW_TD_ARN=$(aws ecs register-task-definition \
             --cli-input-json file://taskdef-new.json \
@@ -122,30 +122,39 @@ jobs:
           echo "sgs=$SGS" >> $GITHUB_OUTPUT
           echo "assign=$ASSIGN" >> $GITHUB_OUTPUT
 
-      # 🔎 تشخيص قبل الهجرة: تأكد من وجود prisma/schema.prisma و prisma/migrations واطبع الإصدارات
+      # 🔎 تشخيص قبل الهجرة (توليد overrides.json بالـ Python لتجنب مشاكل الاقتباس)
       - name: Diagnose container before migrate (RunTask)
         id: diag
         run: |
-          jq -n --arg name "$CONTAINER_NAME" '{
-            containerOverrides:[{
-              name:$name,
-              environment:[
-                {name:"PRISMA_LOG_LEVEL",value:"debug"},
-                {name:"RUST_LOG",value:"info"}
-              ],
-              command:["/bin/sh","-lc",
-                "set -x; \
-                 echo WORKDIR=$(pwd); \
-                 node -v; npm -v; npx -v || true; \
-                 ls -la; \
-                 ls -la prisma || true; \
-                 test -f prisma/schema.prisma && (echo \"=== schema.prisma (first 80 lines) ===\"; head -n 80 prisma/schema.prisma) || echo 'NO schema.prisma'; \
-                 test -d prisma/migrations && (echo '=== migrations ==='; find prisma/migrations -maxdepth 2 -type f -name \"*.sql\" | sed 's#^# - #') || echo 'NO migrations dir'; \
-                 npx prisma -v || true; \
-                 echo 'DIAG DONE'"
-              ]
-            }]
-          }' > overrides-diag.json
+          python3 - <<'PY' > overrides-diag.json
+import json, os
+name=os.environ['CONTAINER_NAME']
+cmd=r"""set -x
+echo WORKDIR=$(pwd)
+node -v; npm -v; npx -v || true
+ls -la
+ls -la prisma || true
+if [ -f prisma/schema.prisma ]; then
+  echo "=== schema.prisma (first 80 lines) ==="
+  head -n 80 prisma/schema.prisma
+else
+  echo "NO schema.prisma"
+fi
+if [ -d prisma/migrations ]; then
+  echo "=== migrations ==="
+  find prisma/migrations -maxdepth 2 -type f -name "*.sql" -print | sed 's#^# - #'
+else
+  echo "NO migrations dir"
+fi
+npx prisma -v || true
+echo DIAG DONE
+"""
+overrides={"containerOverrides":[{"name":name,"environment":[
+  {"name":"PRISMA_LOG_LEVEL","value":"debug"},
+  {"name":"RUST_LOG","value":"info"}
+],"command":["/bin/sh","-lc",cmd]}]}
+print(json.dumps(overrides))
+PY
 
           TASK_ARN=$(aws ecs run-task \
             --cluster "$CLUSTER" \
@@ -176,31 +185,30 @@ jobs:
               --output text || true
             echo "--------------------------------------"
           else
-            echo "No logStreamName or LOG_GROUP not set — راجع logConfiguration بالـ Task Definition."
+            echo "No logStreamName or LOG_GROUP not set — راجع logConfiguration في Task Definition."
           fi
 
           [ "$EXIT" = "0" ] || { echo "❌ Diagnostic task failed (exit $EXIT)"; exit 1; }
 
-      # 🟢 الهجرة الفعلية: Prisma migrate deploy داخل شِل + لوق CloudWatch
+      # 🟢 الهجرة الفعلية: Prisma migrate deploy (توليد overrides.json بالـ Python)
       - name: Run Prisma migrate (RunTask)
         id: migrate
         run: |
-          jq -n --arg name "$CONTAINER_NAME" '{
-            containerOverrides:[{
-              name:$name,
-              environment:[
-                {name:"PRISMA_LOG_LEVEL",value:"debug"},
-                {name:"RUST_LOG",value:"info"}
-              ],
-              command:["/bin/sh","-lc",
-                "set -e; \
-                 node -v; npx prisma -v; \
-                 test -d prisma/migrations || (echo \"❌ prisma/migrations not found\" && exit 1); \
-                 test -f prisma/schema.prisma || (echo \"❌ prisma/schema.prisma not found\" && exit 1); \
-                 npx prisma migrate deploy"
-              ]
-            }]
-          }' > overrides.json
+          python3 - <<'PY' > overrides.json
+import json, os
+name=os.environ['CONTAINER_NAME']
+cmd=r"""set -e
+node -v; npx prisma -v
+[ -d prisma/migrations ] || (echo '❌ prisma/migrations not found' && exit 1)
+[ -f prisma/schema.prisma ] || (echo '❌ prisma/schema.prisma not found' && exit 1)
+npx prisma migrate deploy
+"""
+overrides={"containerOverrides":[{"name":name,"environment":[
+  {"name":"PRISMA_LOG_LEVEL","value":"debug"},
+  {"name":"RUST_LOG","value":"info"}
+],"command":["/bin/sh","-lc",cmd]}]}
+print(json.dumps(overrides))
+PY
 
           TASK_ARN=$(aws ecs run-task \
             --cluster "$CLUSTER" \
@@ -233,7 +241,7 @@ jobs:
               --output text || true
             echo "----------------------------------------"
           else
-            echo "No logStreamName or LOG_GROUP not set — راجع logConfiguration بالـ Task Definition."
+            echo "No logStreamName or LOG_GROUP not set — راجع logConfiguration في Task Definition."
           fi
 
           if [ "$EXIT" != "0" ]; then
