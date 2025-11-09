@@ -21,6 +21,8 @@ jobs:
       CONTAINER_NAME: "kodynex-backend"
       CODECOMMIT_REPO: "kodynex"
       CODECOMMIT_BRANCH: "main"
+      # غروب اللوجز المستخدم في الـ Task Definition
+      LOG_GROUP: "/ecs/kodynex-api"
 
     steps:
       - uses: actions/checkout@v4
@@ -41,8 +43,6 @@ jobs:
           git clone --branch "$CODECOMMIT_BRANCH" \
             https://git-codecommit.${AWS_REGION}.amazonaws.com/v1/repos/${CODECOMMIT_REPO} app
           ls -la app
-
-      # ⚠️ لا نعدّل سكيمة Prisma هنا. نعتمد على اللي دافعته في CodeCommit.
 
       - name: Login to ECR
         uses: aws-actions/amazon-ecr-login@v2
@@ -80,13 +80,7 @@ jobs:
             --task-definition "${{ steps.cur.outputs.td_arn }}" \
             --query 'taskDefinition' \
             --output json > taskdef.json
-
-          # استخرج مجموعة اللوق من الكونتينر الهدف (لازم awslogs يكون مفعّل في TD)
-          LOG_GROUP=$(jq -r '.containerDefinitions[] | select(.name=="'"$CONTAINER_NAME"'") | .logConfiguration.options["awslogs-group"] // empty' taskdef.json)
-          echo "LOG_GROUP=$LOG_GROUP" >> $GITHUB_ENV
-
-          echo "Container names in TD:"
-          cat taskdef.json | jq -r '.containerDefinitions[].name'
+          cat taskdef.json | jq '.containerDefinitions[].name'
 
       - name: Create new task definition revision with new image
         id: newtd
@@ -122,7 +116,7 @@ jobs:
           echo "sgs=$SGS" >> $GITHUB_OUTPUT
           echo "assign=$ASSIGN" >> $GITHUB_OUTPUT
 
-      # 🔎 تشخيص قبل الهجرة (توليد overrides.json بالـ Python لتجنب مشاكل الاقتباس)
+      # ===== تشخيص سريع داخل نفس الصورة قبل الهجرة =====
       - name: Diagnose container before migrate (RunTask)
         id: diag
         run: |
@@ -185,12 +179,12 @@ PY
               --output text || true
             echo "--------------------------------------"
           else
-            echo "No logStreamName or LOG_GROUP not set — راجع logConfiguration في Task Definition."
+            echo "No logStreamName or LOG_GROUP not set — راجع logConfiguration بالـ Task Definition."
           fi
 
           [ "$EXIT" = "0" ] || { echo "❌ Diagnostic task failed (exit $EXIT)"; exit 1; }
 
-      # 🟢 الهجرة الفعلية: Prisma migrate deploy (توليد overrides.json بالـ Python)
+      # ===== تطبيق الهجرة =====
       - name: Run Prisma migrate (RunTask)
         id: migrate
         run: |
