@@ -21,7 +21,7 @@ jobs:
       CONTAINER_NAME: "kodynex-backend"
       CODECOMMIT_REPO: "kodynex"
       CODECOMMIT_BRANCH: "main"
-      LOG_GROUP: "/ecs/kodynex-api"
+      LOG_GROUP: "/ecs/kodynex-api" # لازم يطابق awslogs-group في task definition
 
     steps:
       - uses: actions/checkout@v4
@@ -40,9 +40,10 @@ jobs:
       - name: Clone CodeCommit repo into ./app
         run: |
           git clone --branch "$CODECOMMIT_BRANCH" \
-            "https://git-codecommit.${AWS_REGION}.amazonaws.com/v1/repos/${CODECOMMIT_REPO}" app
+            https://git-codecommit.${AWS_REGION}.amazonaws.com/v1/repos/${CODECOMMIT_REPO} app
           ls -la app
 
+      # لا نعدّل سكيمة Prisma هنا؛ نستخدم الملفات من المستودع
       - name: Login to ECR
         uses: aws-actions/amazon-ecr-login@v2
 
@@ -60,8 +61,10 @@ jobs:
       - name: Push image to ECR
         run: docker push "$IMAGE"
 
-      - name: Install jq
-        run: sudo apt-get update && sudo apt-get install -y jq
+      - name: Install helpers (jq + python)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq python3
 
       - name: Fetch current task definition ARN from service
         id: cur
@@ -79,7 +82,6 @@ jobs:
             --task-definition "${{ steps.cur.outputs.td_arn }}" \
             --query 'taskDefinition' \
             --output json > taskdef.json
-          cat taskdef.json | jq '.containerDefinitions[].name'
 
       - name: Create new task definition revision with new image
         id: newtd
@@ -92,7 +94,8 @@ jobs:
                 )
               )
               | del(.taskDefinitionArn,.revision,.status,.requiresAttributes,.compatibilities,.registeredAt,.registeredBy)
-            ' > taskdef-new.json
+            ' \
+          > taskdef-new.json
 
           NEW_TD_ARN=$(aws ecs register-task-definition \
             --cli-input-json file://taskdef-new.json \
@@ -101,89 +104,42 @@ jobs:
 
           echo "arn=$NEW_TD_ARN" >> $GITHUB_OUTPUT
 
-      - name: Get service network (subnets/sg/assignPublicIp)
+      - name: Get service network (subnets/sg)
         id: net
         run: |
           NET=$(aws ecs describe-services --cluster "$CLUSTER" --services "$SERVICE" \
-            --query 'services[0].networkConfiguration.awsvpcConfiguration' --output json)
+            --query 'services[0].networkConfiguration.awsvpcConfiguration')
           echo "$NET" > net.json
-          SUBNETS=$(jq -r '.subnets | map("\""+.+"\"") | join(",")' net.json)
-          SGS=$(jq -r '.securityGroups | map("\""+.+"\"") | join(",")' net.json)
+          SUBNETS=$(jq -r '.subnets | join(",")' net.json)
+          SGS=$(jq -r '.securityGroups | join(",")' net.json)
           ASSIGN=$(jq -r '.assignPublicIp' net.json)
           echo "subnets=$SUBNETS" >> $GITHUB_OUTPUT
           echo "sgs=$SGS" >> $GITHUB_OUTPUT
           echo "assign=$ASSIGN" >> $GITHUB_OUTPUT
 
-      # ====== Diagnostic task (prints versions/files to CloudWatch) ======
-      - name: Create diagnostic overrides (Python)
+      # ====== Self-heal + Migrate (RunTask) ======
+      # يشيّك لو في MigrationFailure باسم 20251109_phone_auth_init ويعمل resolve ثم deploy
+      # غيّر RESOLVE_MODE إلى "applied" إذا كنت متأكد أن التغييرات موجودة فعلاً في DB
+      - name: Create self-heal+migrate overrides (Python)
         run: |
           python3 - <<'PY'
           import json, os
-          payload = {
-            "containerOverrides": [{
-              "name": os.environ["CONTAINER_NAME"],
-              "environment": [
-                {"name":"PRISMA_LOG_LEVEL","value":"debug"},
-                {"name":"RUST_LOG","value":"info"}
-              ],
-              "command": [
-                "/bin/sh","-lc",
-                "set -x; "
-                "echo WORKDIR=$(pwd); "
-                "node -v; npm -v; npx -v || true; "
-                "ls -la; ls -la prisma || true; "
-                "test -f prisma/schema.prisma && (echo '=== schema.prisma (first 80 lines) ==='; head -n 80 prisma/schema.prisma) || echo 'NO schema.prisma'; "
-                "test -d prisma/migrations && (echo '=== migrations ==='; find prisma/migrations -maxdepth 2 -type f -name '*.sql' | sed 's#^# - #') || echo 'NO migrations dir'; "
-                "npx prisma -v || true; "
-                "echo 'DIAG DONE'"
-              ]
-            }]
-          }
-          open('overrides-diag.json','w').write(json.dumps(payload))
-          PY
+          RESOLVE_MODE = "rolled-back"  # "rolled-back" أو "applied" حسب حالتك
+          MIG_NAME = "20251109_phone_auth_init"
 
-      - name: Run diagnostic task
-        id: diag
-        run: |
-          TASK_ARN=$(aws ecs run-task \
-            --cluster "$CLUSTER" \
-            --launch-type FARGATE \
-            --task-definition "${{ steps.newtd.outputs.arn }}" \
-            --network-configuration "awsvpcConfiguration={subnets=[${{ steps.net.outputs.subnets }}],securityGroups=[${{ steps.net.outputs.sgs }}],assignPublicIp=${{ steps.net.outputs.assign }}}" \
-            --overrides file://overrides-diag.json \
-            --query 'tasks[0].taskArn' --output text)
+          # سكربت الشِل داخل الكونتينر
+          cmd = (
+            "set -e; "
+            "echo '== Prisma migrate status (json) =='; "
+            "npx prisma migrate status --json > /tmp/mstat.json || true; "
+            "if grep -q '\"MigrationFailure\"' /tmp/mstat.json; then "
+            f"  echo 'Found MigrationFailure; resolving {MIG_NAME} as {RESOLVE_MODE}'; "
+            f"  npx prisma migrate resolve --{RESOLVE_MODE} {MIG_NAME}; "
+            "fi; "
+            "echo '== prisma migrate deploy =='; "
+            "npx prisma migrate deploy"
+          )
 
-          echo "task_arn=$TASK_ARN" >> $GITHUB_OUTPUT
-          aws ecs wait tasks-stopped --cluster "$CLUSTER" --tasks "$TASK_ARN"
-
-          DESC=$(aws ecs describe-tasks --cluster "$CLUSTER" --tasks "$TASK_ARN" --output json)
-          echo "$DESC" > task-desc-diag.json
-
-          EXIT=$(jq -r '.tasks[0].containers[0].exitCode // "null"' task-desc-diag.json)
-          STREAM=$(jq -r '.tasks[0].containers[0].logStreamName // ""' task-desc-diag.json)
-          echo "Diag ExitCode: $EXIT"
-          echo "Diag LogStream: $STREAM"
-
-          if [ -n "$STREAM" ] && [ "$STREAM" != "null" ] && [ -n "${LOG_GROUP:-}" ]; then
-            echo "---- CloudWatch Logs (diag tail) ----"
-            aws logs get-log-events \
-              --log-group-name "$LOG_GROUP" \
-              --log-stream-name "$STREAM" \
-              --limit 200 \
-              --query 'events[].message' \
-              --output text || true
-            echo "--------------------------------------"
-          else
-            echo "No logStreamName or LOG_GROUP not set — راجع logConfiguration في Task Definition."
-          fi
-
-          [ "$EXIT" = "0" ] || { echo "❌ Diagnostic task failed (exit $EXIT)"; exit 1; }
-
-      # ====== Prisma migrate (actual) ======
-      - name: Create migrate overrides (Python)
-        run: |
-          python3 - <<'PY'
-          import json, os
           payload = {
             "containerOverrides": [{
               "name": os.environ["CONTAINER_NAME"],
@@ -191,13 +147,14 @@ jobs:
                 {"name":"PRISMA_LOG_LEVEL","value":"info"},
                 {"name":"RUST_LOG","value":"info"}
               ],
-              "command": ["npx","prisma","migrate","deploy"]
+              "command": ["/bin/sh","-lc", cmd]
             }]
           }
-          open('overrides-migrate.json','w').write(json.dumps(payload))
+          with open('overrides-migrate.json','w') as f:
+            json.dump(payload, f)
           PY
 
-      - name: Run Prisma migrate (as RunTask)
+      - name: Run Prisma migrate (self-heal)
         id: migrate
         run: |
           TASK_ARN=$(aws ecs run-task \
@@ -209,16 +166,20 @@ jobs:
             --query 'tasks[0].taskArn' --output text)
 
           echo "task_arn=$TASK_ARN" >> $GITHUB_OUTPUT
+
+          # انتظر توقف المهمة
           aws ecs wait tasks-stopped --cluster "$CLUSTER" --tasks "$TASK_ARN"
 
-          EXIT=$(aws ecs describe-tasks --cluster "$CLUSTER" --tasks "$TASK_ARN" \
-                  --query 'tasks[0].containers[0].exitCode' --output text)
-          STREAM=$(aws ecs describe-tasks --cluster "$CLUSTER" --tasks "$TASK_ARN" \
-                  --query 'tasks[0].containers[0].logStreamName' --output text)
+          # تحقّق من كود الخروج + اسحب لوقات CloudWatch إن وُجدت
+          DESC=$(aws ecs describe-tasks --cluster "$CLUSTER" --tasks "$TASK_ARN" --output json)
+          echo "$DESC" > task-desc.json
+          EXIT=$(jq -r '.tasks[0].containers[0].exitCode // "null"' task-desc.json)
+          STREAM=$(jq -r '.tasks[0].containers[0].logStreamName // ""' task-desc.json)
+
           echo "Migrate ExitCode: $EXIT"
           echo "Migrate LogStream: $STREAM"
 
-          if [ -n "$STREAM" ] && [ "$STREAM" != "None" ] && [ -n "${LOG_GROUP:-}" ]; then
+          if [ -n "$STREAM" ] && [ "$STREAM" != "null" ] && [ -n "${LOG_GROUP:-}" ]; then
             echo "---- CloudWatch Logs (migrate tail) ----"
             aws logs get-log-events \
               --log-group-name "$LOG_GROUP" \
@@ -227,6 +188,8 @@ jobs:
               --query 'events[].message' \
               --output text || true
             echo "----------------------------------------"
+          else
+            echo "No logStreamName or LOG_GROUP not set — تأكد من awslogs في Task Definition."
           fi
 
           if [ "$EXIT" != "0" ]; then
