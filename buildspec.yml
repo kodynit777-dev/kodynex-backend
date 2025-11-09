@@ -15,8 +15,16 @@ phases:
       - docker build -t $ECR_URI:sha-$IMAGE_TAG -t $ECR_URI:latest .
   post_build:
     commands:
+      # ✅ شغّل هجرات Prisma من داخل الصورة قبل دفعها
+      # لازم يكون DATABASE_URL متوفر في CodeBuild (Type = Secrets Manager) ومفعّل Privileged
+      - echo "Running Prisma migrations..."
+      - docker run --rm --env DATABASE_URL="$DATABASE_URL" $ECR_URI:sha-$IMAGE_TAG npx prisma migrate deploy
+
+      # ✅ ادفع الصور بعد نجاح الهجرات
       - docker push $ECR_URI:sha-$IMAGE_TAG
       - docker push $ECR_URI:latest
+
+      # ✅ اكتب artifact للصورة
       - printf '{"imageUri":"%s"}' "$ECR_URI:latest" > imageDetail.json
 artifacts:
   files:
