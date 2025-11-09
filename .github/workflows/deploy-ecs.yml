@@ -42,22 +42,7 @@ jobs:
             https://git-codecommit.${AWS_REGION}.amazonaws.com/v1/repos/${CODECOMMIT_REPO} app
           ls -la app
 
-      # 🔧 Hotfix: اكتب سكيمة Prisma نظيفة داخل بيئة العداء قبل البناء
-      - name: Normalize prisma schema (hotfix)
-        run: |
-          mkdir -p app/prisma
-          cat > app/prisma/schema.prisma <<'EOF'
-          generator client {
-            provider = "prisma-client-js"
-          }
-
-          datasource db {
-            provider = "postgresql"
-            url      = env("DATABASE_URL")
-          }
-          EOF
-          echo "=== final schema ==="
-          cat app/prisma/schema.prisma
+      # ⚠️ لا نكتب/نعدّل السكيمة هنا. نعتمد على الملفات الموجودة في المستودع.
 
       - name: Login to ECR
         uses: aws-actions/amazon-ecr-login@v2
@@ -67,7 +52,7 @@ jobs:
           aws ecr describe-repositories --repository-names "$ECR_REPO" >/dev/null 2>&1 || \
           aws ecr create-repository --repository-name "$ECR_REPO" >/dev/null
 
-      - name: Build & tag Docker image
+      - name: Build & tag Docker image (use Dockerfile inside app/src)
         run: |
           IMAGE="$ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPO:${{ github.sha }}"
           docker build -f app/src/Dockerfile -t "$IMAGE" app
@@ -80,22 +65,25 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y jq
 
       - name: Fetch current task definition ARN from service
+        id: cur
         run: |
-          aws ecs describe-services \
+          TD_ARN=$(aws ecs describe-services \
             --cluster "$CLUSTER" \
             --services "$SERVICE" \
             --query 'services[0].taskDefinition' \
-            --output text > taskdef_arn.txt
+            --output text)
+          echo "td_arn=$TD_ARN" >> $GITHUB_OUTPUT
 
       - name: Download current task definition JSON
         run: |
           aws ecs describe-task-definition \
-            --task-definition "$(cat taskdef_arn.txt)" \
+            --task-definition "${{ steps.cur.outputs.td_arn }}" \
             --query 'taskDefinition' \
             --output json > taskdef.json
           cat taskdef.json | jq '.containerDefinitions[].name'
 
       - name: Create new task definition revision with new image
+        id: newtd
         run: |
           cat taskdef.json \
           | jq --arg IMG "$IMAGE" --arg NAME "$CONTAINER_NAME" '
@@ -107,23 +95,71 @@ jobs:
               | del(.taskDefinitionArn,.revision,.status,.requiresAttributes,.compatibilities,.registeredAt,.registeredBy)' \
           > taskdef-new.json
 
-          aws ecs register-task-definition \
+          NEW_TD_ARN=$(aws ecs register-task-definition \
             --cli-input-json file://taskdef-new.json \
             --query 'taskDefinition.taskDefinitionArn' \
-            --output text > new_taskdef_arn.txt
+            --output text)
 
-          echo "NEW_TD_ARN=$(cat new_taskdef_arn.txt)" >> $GITHUB_ENV
+          echo "arn=$NEW_TD_ARN" >> $GITHUB_OUTPUT
+
+      # 🟢 شغّل Prisma migrate على نفس الـ Task Definition (الصورة الجديدة) قبل تحديث الخدمة
+      - name: Get service network (subnets/sg)
+        id: net
+        run: |
+          NET=$(aws ecs describe-services --cluster "$CLUSTER" --services "$SERVICE" \
+            --query 'services[0].networkConfiguration.awsvpcConfiguration')
+          echo "$NET" > net.json
+          SUBNETS=$(jq -r '.subnets | join(",")' net.json)
+          SGS=$(jq -r '.securityGroups | join(",")' net.json)
+          ASSIGN=$(jq -r '.assignPublicIp' net.json)
+          echo "subnets=$SUBNETS" >> $GITHUB_OUTPUT
+          echo "sgs=$SGS" >> $GITHUB_OUTPUT
+          echo "assign=$ASSIGN" >> $GITHUB_OUTPUT
+
+      - name: Run Prisma migrate (as RunTask)
+        id: migrate
+        run: |
+          echo '{"containerOverrides":[{"name":"'"$CONTAINER_NAME"'","command":["npx","prisma","migrate","deploy"]}]}' > overrides.json
+
+          TASK_ARN=$(aws ecs run-task \
+            --cluster "$CLUSTER" \
+            --launch-type FARGATE \
+            --task-definition "${{ steps.newtd.outputs.arn }}" \
+            --network-configuration "awsvpcConfiguration={subnets=[${{ steps.net.outputs.subnets }}],securityGroups=[${{ steps.net.outputs.sgs }}],assignPublicIp=${{ steps.net.outputs.assign }}}" \
+            --overrides file://overrides.json \
+            --query 'tasks[0].taskArn' --output text)
+
+          echo "task_arn=$TASK_ARN" >> $GITHUB_OUTPUT
+
+          # انتظر توقف المهمة
+          aws ecs wait tasks-stopped --cluster "$CLUSTER" --tasks "$TASK_ARN"
+
+          # تحقّق من كود الخروج
+          EXIT=$(aws ecs describe-tasks --cluster "$CLUSTER" --tasks "$TASK_ARN" \
+                  --query 'tasks[0].containers[0].exitCode' --output text)
+          echo "exit_code=$EXIT" >> $GITHUB_OUTPUT
+          if [ "$EXIT" != "0" ]; then
+            echo "❌ Prisma migrate failed, exitCode=$EXIT"
+            aws ecs describe-tasks --cluster "$CLUSTER" --tasks "$TASK_ARN" \
+              --query 'tasks[0].{stoppedReason:stoppedReason,container:containers[0].reason}' --output table || true
+            exit 1
+          fi
 
       - name: Update ECS service to new task definition
         run: |
           aws ecs update-service \
             --cluster "$CLUSTER" \
             --service "$SERVICE" \
-            --task-definition "$NEW_TD_ARN" \
+            --task-definition "${{ steps.newtd.outputs.arn }}" \
             --force-new-deployment
+          aws ecs wait services-stable --cluster "$CLUSTER" --services "$SERVICE"
 
-      - name: Wait for service stability
+      - name: Smoke test (/health & /db-health)
         run: |
-          aws ecs wait services-stable \
-            --cluster "$CLUSTER" \
-            --services "$SERVICE"
+          TASK=$(aws ecs list-tasks --cluster "$CLUSTER" --service-name "$SERVICE" --desired-status RUNNING --query 'taskArns[0]' --output text)
+          ENI=$(aws ecs describe-tasks --cluster "$CLUSTER" --tasks "$TASK" \
+            --query "tasks[0].attachments[?type=='ElasticNetworkInterface'].details[?name=='networkInterfaceId'].value" --output text)
+          IP=$(aws ec2 describe-network-interfaces --network-interface-ids "$ENI" --query 'NetworkInterfaces[0].Association.PublicIp' --output text)
+          echo "Public IP: $IP"
+          curl -fsS "http://$IP:3000/health"
+          curl -fsS "http://$IP:3000/db-health"
