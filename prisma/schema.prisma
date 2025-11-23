@@ -10,35 +10,11 @@ datasource db {
 }
 
 model User {
-  id              String    @id @default(cuid())
-  phoneE164       String    @unique // رقم الجوال بصيغة E.164 مثل +9665xxxx
+  id              String   @id @default(cuid())
+  phoneE164       String   @unique
   name            String?
-  email           String?   @unique
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  email           String?  @unique
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
   phoneVerifiedAt DateTime?
-
-  // علاقات
-  otps PhoneOtp[]
-}
-
-model PhoneOtp {
-  id         String     @id @default(cuid())
-  phoneE164  String // نفس الرقم المستهدف
-  codeHash   String // هاش للـ 6 digits (لا نخزّن الكود نص صريح)
-  salt       String // ملح للهاش
-  purpose    OtpPurpose
-  expiresAt  DateTime // عادة 5 دقائق
-  attempts   Int        @default(0) // عدد المحاولات
-  consumedAt DateTime?
-  createdAt  DateTime   @default(now())
-  user       User?      @relation(fields: [userId], references: [id])
-  userId     String?
-
-  @@index([phoneE164, purpose, expiresAt])
-}
-
-enum OtpPurpose {
-  SIGNIN
-  SIGNUP
 }
