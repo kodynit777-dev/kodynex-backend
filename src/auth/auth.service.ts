@@ -1,4 +1,42 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, BadRequestException } from '@nestjs/common';
+import * as bcrypt from 'bcrypt';
+import { PrismaService } from 'src/prisma/prisma.service';
 
 @Injectable()
-export class AuthService {}
+export class AuthService {
+  constructor(private prisma: PrismaService) {}
+
+  async register(data: any) {
+    // 1) التحقق من البيانات الأساسية
+    if (!data.email || !data.password || !data.name || !data.phone) {
+      throw new BadRequestException('Missing required fields');
+    }
+
+    // 2) منع تكرار الإيميل
+    const existingUser = await this.prisma.user.findUnique({
+      where: { email: data.email },
+    });
+
+    if (existingUser) {
+      throw new BadRequestException('Email already in use');
+    }
+
+    // 3) تشفير كلمة المرور
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(data.password, salt);
+
+    // 4) إنشاء المستخدم داخل قاعدة البيانات
+    const user = await this.prisma.user.create({
+      data: {
+        name: data.name,
+        email: data.email,
+        phoneE164: data.phone,   // ← التعديل المهم هنا
+        password: hashedPassword,
+      },
+    });
+
+    // 5) تجهيز الرد بدون كلمة المرور
+    const { password, ...result } = user;
+    return result;
+  }
+}
