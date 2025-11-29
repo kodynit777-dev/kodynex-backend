@@ -3,16 +3,23 @@ import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
 
 async function bootstrap() {
+  console.log("🚀 Starting Kodynex Backend...");  // Log 1
+
   const app = await NestFactory.create(AppModule);
 
   app.useGlobalPipes(
     new ValidationPipe({
-      whitelist: true,              // يمنع أي بيانات زايدة
-      forbidNonWhitelisted: true,   // يعطي خطأ لو أرسلوا Keys ممنوعة
-      transform: true,              // يحول الأنواع تلقائيًا (string → number)
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
     }),
   );
 
-  await app.listen(process.env.PORT ?? 3000);
+  const port = process.env.PORT ?? 3000;
+  await app.listen(port);
+
+  console.log(`✅ Kodynex Backend is running on port ${port}`); // Log 2
+  console.log("📡 Logs will now appear in ECS & CloudWatch"); // Log 3
 }
+
 bootstrap();
