@@ -7,13 +7,36 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum UserRole {
+  ADMIN
+  OWNER
+  CUSTOMER
+}
+
 model User {
-  id              String    @id @default(cuid())
-  phoneE164       String    @unique
+  id              String        @id @default(cuid())
+  phoneE164       String        @unique
   name            String?
-  email           String?   @unique
+  email           String?       @unique
   password        String
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  role            UserRole      @default(CUSTOMER)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
   phoneVerifiedAt DateTime?
+
+  // 👇 إضافة علاقة المالك → المطاعم
+  restaurants     Restaurant[]
+}
+
+model Restaurant {
+  id          String    @id @default(cuid())
+  name        String
+  description String?
+  logo        String?
+
+  ownerId     String
+  owner       User      @relation(fields: [ownerId], references: [id])
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 }

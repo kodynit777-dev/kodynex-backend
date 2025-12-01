@@ -10,23 +10,40 @@ export class AuthController {
 
   @Get('ready')
   ready() {
-    return 'OK';
+    return {
+      status: true,
+      message: 'Auth module is ready',
+      data: null,
+    };
   }
 
   @Post('register')
-  register(@Body() dto: RegisterDto) {
-    return this.authService.register(dto);
+  async register(@Body() dto: RegisterDto) {
+    const user = await this.authService.register(dto);
+    return {
+      status: true,
+      message: 'تم إنشاء الحساب بنجاح',
+      data: user,
+    };
   }
 
   @Post('login')
-  login(@Body() dto: LoginDto) {
-    return this.authService.login(dto.email, dto.password);
+  async login(@Body() dto: LoginDto) {
+    const result = await this.authService.login(dto.email, dto.password);
+    return {
+      status: true,
+      message: 'تم تسجيل الدخول بنجاح',
+      data: result,
+    };
   }
 
-  // 🔥 مسار /auth/me محمي بالتوكن
   @UseGuards(JwtAuthGuard)
   @Get('me')
-  getMe(@Req() req: any) {
-    return req.user; // جاية من JwtStrategy
+  async getMe(@Req() req: any) {
+    return {
+      status: true,
+      message: 'تم جلب بيانات المستخدم',
+      data: req.user,
+    };
   }
 }

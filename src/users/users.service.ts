@@ -1,37 +1,37 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
 export class UsersService {
   constructor(private prisma: PrismaService) {}
 
-  // 🔹 دالة تجيب المستخدم عن طريق الـ ID
+  // 🔹 جلب المستخدم بالـ ID (بدون password)
   async findById(id: string) {
-    return this.prisma.user.findUnique({
+    const user = await this.prisma.user.findUnique({
       where: { id },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        phoneE164: true,
-        createdAt: true,
-        updatedAt: true,
-      },
     });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    return this.cleanUser(user);
   }
 
-  // 🔹 دالة تجيب المستخدم عن طريق الإيميل
+  // 🔹 جلب المستخدم بالإيميل (نرجع الباسورد لأجل Login)
   async findByEmail(email: string) {
-    return this.prisma.user.findUnique({
+    const user = await this.prisma.user.findUnique({
       where: { email },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        phoneE164: true,
-        createdAt: true,
-        updatedAt: true,
-      },
     });
+
+    // لا نرمي خطأ هنا — لأن Login يعتمد على النتيجة
+    return user;
+  }
+
+  // 🔹 تنظيف بيانات المستخدم (إزالة password فقط)
+  cleanUser(user: any) {
+    if (!user) return null;
+    const { password, ...cleaned } = user;
+    return cleaned;
   }
 }
