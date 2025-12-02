@@ -1,16 +1,63 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { PrismaService } from 'src/prisma/prisma.service';
+import { CreateRestaurantDto } from './dto/create-restaurant.dto';
 
 @Injectable()
 export class RestaurantsService {
-  create(data: any) {
-    return 'create() not implemented yet';
+  constructor(private prisma: PrismaService) {}
+
+  // إنشاء مطعم جديد
+  async create(ownerId: string, dto: CreateRestaurantDto) {
+    const restaurant = await this.prisma.restaurant.create({
+      data: {
+        name: dto.name,
+        description: dto.description,
+        logo: dto.logo,
+        ownerId,
+      },
+    });
+
+    // تنظيف البيانات
+    return {
+      id: restaurant.id,
+      name: restaurant.name,
+      description: restaurant.description,
+      logo: restaurant.logo,
+      createdAt: restaurant.createdAt,
+    };
   }
 
-  findAll() {
-    return 'findAll() not implemented yet';
+  // عرض كل المطاعم
+  async findAll() {
+    const restaurants = await this.prisma.restaurant.findMany({
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return restaurants.map((r) => ({
+      id: r.id,
+      name: r.name,
+      description: r.description,
+      logo: r.logo,
+      createdAt: r.createdAt,
+    }));
   }
 
-  findById(id: string) {
-    return `findById(${id}) not implemented yet`;
+  // عرض مطعم واحد حسب ID
+  async findOne(id: string) {
+    const restaurant = await this.prisma.restaurant.findUnique({
+      where: { id },
+    });
+
+    if (!restaurant) {
+      throw new NotFoundException('المطعم غير موجود');
+    }
+
+    return {
+      id: restaurant.id,
+      name: restaurant.name,
+      description: restaurant.description,
+      logo: restaurant.logo,
+      createdAt: restaurant.createdAt,
+    };
   }
 }
