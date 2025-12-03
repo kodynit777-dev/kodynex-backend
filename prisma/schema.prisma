@@ -24,19 +24,36 @@ model User {
   updatedAt       DateTime      @updatedAt
   phoneVerifiedAt DateTime?
 
-  // 👇 إضافة علاقة المالك → المطاعم
+  // 👇 علاقة المالك مع المطاعم
   restaurants     Restaurant[]
 }
 
 model Restaurant {
-  id          String    @id @default(cuid())
+  id          String     @id @default(cuid())
   name        String
   description String?
   logo        String?
 
+  // 👇 علاقة المطعم مع المالك
   ownerId     String
-  owner       User      @relation(fields: [ownerId], references: [id])
+  owner       User       @relation(fields: [ownerId], references: [id])
 
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  // 👇 علاقة المطعم مع المنتجات
+  products    Product[]
+
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+}
+
+model Product {
+  id           String     @id @default(cuid())
+  name         String
+  price        Float
+  description  String?
+  image        String?
+  
+  restaurantId String
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id])
+
+  createdAt    DateTime   @default(now())
 }
