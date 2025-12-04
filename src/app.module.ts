@@ -9,6 +9,7 @@ import { UsersModule } from './users/users.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RestaurantsModule } from './restaurants/restaurants.module';
 import { ProductsModule } from './products/products.module';   // ← إضافة مهمة
+import { OrdersModule } from './orders/orders.module';
 
 @Module({
   imports: [
@@ -19,7 +20,8 @@ import { ProductsModule } from './products/products.module';   // ← إضافة
     AuthModule,
     UsersModule,
     RestaurantsModule,
-    ProductsModule,  // ← ضيفها هنا
+    ProductsModule,
+    OrdersModule,  // ← ضيفها هنا
   ],
   controllers: [AppController],
   providers: [AppService],
