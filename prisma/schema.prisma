@@ -13,6 +13,14 @@ enum UserRole {
   CUSTOMER
 }
 
+enum OrderStatus {
+  PENDING
+  ACCEPTED
+  PREPARING
+  DELIVERED
+  CANCELLED
+}
+
 model User {
   id              String        @id @default(cuid())
   phoneE164       String        @unique
@@ -24,10 +32,7 @@ model User {
   updatedAt       DateTime      @updatedAt
   phoneVerifiedAt DateTime?
 
-  // علاقة المالك مع المطاعم
   restaurants     Restaurant[]
-
-  // علاقة المستخدم مع الطلبات (الزبون)
   orders          Order[]
 }
 
@@ -40,10 +45,7 @@ model Restaurant {
   ownerId     String
   owner       User         @relation(fields: [ownerId], references: [id])
 
-  // علاقة المطعم مع المنتجات
   products    Product[]
-
-  // علاقة المطعم مع الطلبات
   orders      Order[]
 
   createdAt   DateTime     @default(now())
@@ -60,17 +62,9 @@ model Product {
   restaurantId String
   restaurant   Restaurant   @relation(fields: [restaurantId], references: [id])
 
-  // علاقة المنتج مع العناصر داخل الطلب
   orderItems   OrderItem[]
 
   createdAt    DateTime     @default(now())
-}
-
-enum OrderStatus {
-  PENDING
-  PREPARING
-  DELIVERED
-  CANCELLED
 }
 
 model Order {
@@ -81,7 +75,6 @@ model Order {
   status       OrderStatus  @default(PENDING)
   createdAt    DateTime     @default(now())
 
-  // العلاقات
   user        User          @relation(fields: [userId], references: [id])
   restaurant  Restaurant    @relation(fields: [restaurantId], references: [id])
   items       OrderItem[]
@@ -93,7 +86,6 @@ model OrderItem {
   productId String
   quantity  Int         @default(1)
 
-  // العلاقات
   order     Order       @relation(fields: [orderId], references: [id])
   product   Product     @relation(fields: [productId], references: [id])
 }

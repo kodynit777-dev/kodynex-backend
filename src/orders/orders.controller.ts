@@ -1,7 +1,19 @@
-import { Controller, Post, Get, Body, Param, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Get,
+  Body,
+  Param,
+  Patch,
+  UseGuards,
+} from '@nestjs/common';
 import { OrdersService } from './orders.service';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
+import { RolesGuard } from 'src/auth/guards/roles.guard';
+import { Roles } from 'src/auth/decorators/roles.decorator';
+
 import { GetUser } from 'src/auth/decorators/get-user.decorator';
+import { UpdateStatusDto } from './dto/update-status.dto';
 
 @Controller('orders')
 @UseGuards(JwtAuthGuard)
@@ -45,16 +57,41 @@ export class OrdersController {
 
   // عرض طلبات مطعم لصاحب المطعم
   @Get('/restaurant/:id')
+  @UseGuards(RolesGuard)
+  @Roles('OWNER', 'ADMIN')
   async restaurantOrders(
     @GetUser('id') ownerId: string,
     @Param('id') restaurantId: string,
   ) {
-    const orders = await this.ordersService.restaurantOrders(ownerId, restaurantId);
+    // استخدام الدالة الصحيحة من service
+    const orders = await this.ordersService.getRestaurantOrders(restaurantId);
 
     return {
       status: true,
       message: '',
       data: orders,
+    };
+  }
+
+  // تغيير حالة الطلب
+  @Patch(':id/status')
+  @UseGuards(RolesGuard)
+  @Roles('OWNER', 'ADMIN')
+  async updateStatus(
+    @Param('id') orderId: string,
+    @Body() dto: UpdateStatusDto,
+    @GetUser('id') ownerId: string,
+  ) {
+    const updated = await this.ordersService.updateStatus(
+      orderId,
+      ownerId,
+      dto.status,
+    );
+
+    return {
+      status: true,
+      message: 'تم تحديث حالة الطلب بنجاح',
+      data: updated,
     };
   }
 }
