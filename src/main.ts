@@ -7,9 +7,12 @@ async function bootstrap() {
 
   const app = await NestFactory.create(AppModule);
 
-  // ⭐ CORS من env
+  // ⭐ CORS النهائي — يدعم localhost + env
   app.enableCors({
     origin: [
+      'http://localhost:19006',   // Expo local
+      'http://localhost:3000',    // Web local
+      'http://127.0.0.1:3000',
       process.env.EXPO_URL,
       process.env.FRONTEND_URL,
     ].filter(Boolean),
@@ -26,11 +29,13 @@ async function bootstrap() {
     }),
   );
 
+  // ⭐ ECS/Fargate requires listening on 0.0.0.0
   const port = process.env.PORT ?? 3000;
-  await app.listen(port);
+  await app.listen(port, '0.0.0.0');
 
   console.log(`✅ Kodynex Backend is running on port ${port}`);
-  console.log("📡 Logs will now appear in ECS & CloudWatch");
+  console.log("📡 Listening on 0.0.0.0 (AWS Fargate compatible)");
+  console.log("📡 Logs are visible in ECS & CloudWatch");
 }
 
 bootstrap();
