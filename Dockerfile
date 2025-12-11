@@ -5,8 +5,8 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 
 # Install dependencies
-COPY package.json package-lock.json ./
-RUN npm ci
+COPY package*.json ./
+RUN npm install
 
 # Copy the full source
 COPY . .
@@ -19,22 +19,21 @@ RUN npm run build
 
 
 # -----------------------------
-# Stage 2: Run the application
+# Stage 2: Production image
 # -----------------------------
 FROM node:20-alpine
 WORKDIR /app
 
-# Copy only necessary files
-COPY package.json package-lock.json ./
-RUN npm ci --omit=dev
+# Install only production deps
+COPY package*.json ./
+RUN npm install --omit=dev
 
-# Copy built application + prisma folder + prisma client
+# Copy dist + prisma client + prisma schema
 COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 COPY --from=builder /app/prisma ./prisma
 
-# No need to run prisma generate again here
-
+# Expose port
 EXPOSE 3000
 
 CMD ["node", "dist/main.js"]

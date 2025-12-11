@@ -1,11 +1,13 @@
 import { Controller, Get } from '@nestjs/common';
 import { AppService } from './app.service';
-// أضف هذا:
-import { PrismaClient } from '@prisma/client';
+import { PrismaService } from './prisma/prisma.service';
 
 @Controller()
 export class AppController {
-  constructor(private readonly appService: AppService) {}
+  constructor(
+    private readonly appService: AppService,
+    private readonly prisma: PrismaService,
+  ) {}
 
   @Get()
   getHello(): string {
@@ -14,15 +16,12 @@ export class AppController {
 
   @Get('health')
   health() {
-    return 'OK';
+    return { status: 'OK' };
   }
 
-  // أضف هذا المسار الجديد:
   @Get('db-health')
   async dbHealth() {
-    const prisma = new PrismaClient();
-    await prisma.$queryRaw`SELECT 1`;
-    await prisma.$disconnect();
-    return { db: 'OK' };
+    await this.prisma.$queryRaw`SELECT 1`;
+    return { database: 'OK' };
   }
 }
