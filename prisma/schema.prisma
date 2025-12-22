@@ -7,6 +7,66 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model User {
+  id              String       @id @default(cuid())
+  phoneE164       String       @unique
+  name            String?
+  email           String?      @unique
+  password        String
+  role            UserRole     @default(CUSTOMER)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  phoneVerifiedAt DateTime?
+  orders          Order[]
+  restaurants     Restaurant[]
+}
+
+model Restaurant {
+  id          String    @id @default(cuid())
+  name        String
+  description String?
+  logo        String?
+  ownerId     String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  orders      Order[]
+  products    Product[]
+  owner       User      @relation(fields: [ownerId], references: [id])
+}
+
+model Product {
+  id           String      @id @default(cuid())
+  name         String
+  price        Float
+  description  String?
+  image        String?
+  restaurantId String
+  createdAt    DateTime    @default(now())
+  orderItems   OrderItem[]
+  restaurant   Restaurant  @relation(fields: [restaurantId], references: [id])
+}
+
+model Order {
+  id           String      @id @default(cuid())
+  userId       String
+  restaurantId String
+  totalPrice   Float
+  status       OrderStatus @default(PENDING)
+  createdAt    DateTime    @default(now())
+  restaurant   Restaurant  @relation(fields: [restaurantId], references: [id])
+  user         User        @relation(fields: [userId], references: [id])
+  items        OrderItem[]
+}
+
+model OrderItem {
+  id        String  @id @default(cuid())
+  orderId   String
+  productId String
+  quantity  Int     @default(1)
+  order     Order   @relation(fields: [orderId], references: [id])
+  product   Product @relation(fields: [productId], references: [id])
+}
+
 enum UserRole {
   ADMIN
   OWNER
@@ -19,73 +79,4 @@ enum OrderStatus {
   PREPARING
   DELIVERED
   CANCELLED
-}
-
-model User {
-  id              String        @id @default(cuid())
-  phoneE164       String        @unique
-  name            String?
-  email           String?       @unique
-  password        String
-  role            UserRole      @default(CUSTOMER)
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
-  phoneVerifiedAt DateTime?
-
-  restaurants     Restaurant[]
-  orders          Order[]
-}
-
-model Restaurant {
-  id          String       @id @default(cuid())
-  name        String
-  description String?
-  logo        String?
-
-  ownerId     String
-  owner       User         @relation(fields: [ownerId], references: [id])
-
-  products    Product[]
-  orders      Order[]
-
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
-}
-
-model Product {
-  id           String       @id @default(cuid())
-  name         String
-  price        Float
-  description  String?
-  image        String?
-  
-  restaurantId String
-  restaurant   Restaurant   @relation(fields: [restaurantId], references: [id])
-
-  orderItems   OrderItem[]
-
-  createdAt    DateTime     @default(now())
-}
-
-model Order {
-  id           String       @id @default(cuid())
-  userId       String
-  restaurantId String
-  totalPrice   Float
-  status       OrderStatus  @default(PENDING)
-  createdAt    DateTime     @default(now())
-
-  user        User          @relation(fields: [userId], references: [id])
-  restaurant  Restaurant    @relation(fields: [restaurantId], references: [id])
-  items       OrderItem[]
-}
-
-model OrderItem {
-  id        String      @id @default(cuid())
-  orderId   String
-  productId String
-  quantity  Int         @default(1)
-
-  order     Order       @relation(fields: [orderId], references: [id])
-  product   Product     @relation(fields: [productId], references: [id])
 }

@@ -5,7 +5,7 @@ import { UsersService } from '../../users/users.service';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
-  constructor(private usersService: UsersService) {
+  constructor(private readonly usersService: UsersService) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
@@ -14,13 +14,24 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   async validate(payload: any) {
-    // payload.sub = user.id (من يوم 3 في Login)
-    const user = await this.usersService.findById(payload.sub);
+    /**
+     * التوكن عندك يحتوي:
+     * {
+     *   id: string,
+     *   email: string,
+     *   iat: number,
+     *   exp: number
+     * }
+     */
 
-    // إذا مالقينا المستخدم — نرجع null أو نخلي Nest يرفض الطلب
-    if (!user) return null;
+    const user = await this.usersService.findById(payload.id);
 
-    // UsersService أصلاً يرجع بيانات بدون password
+    // إذا المستخدم غير موجود → Unauthorized
+    if (!user) {
+      return null;
+    }
+
+    // يرجع المستخدم كامل (بدون password)
     return user;
   }
 }
