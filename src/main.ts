@@ -3,11 +3,22 @@ import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
 
 async function bootstrap() {
-  console.log("🚀 Starting Kodynex Backend...");
+  console.log('🚀 Starting Kodynex Backend...');
 
   const app = await NestFactory.create(AppModule);
 
-  // ⭐ CORS النهائي — يدعم localhost + env
+  /**
+   * 🌐 Global API Prefix
+   * كل المسارات تبدأ بـ /api
+   * مثال: /api/auth/login
+   *        /api/public/demo/catalog
+   */
+  app.setGlobalPrefix('api');
+
+  /**
+   * 🌍 CORS Configuration
+   * يدعم Expo + Web + Domains مستقبلية
+   */
   app.enableCors({
     origin: [
       'http://localhost:19006',   // Expo local
@@ -20,7 +31,10 @@ async function bootstrap() {
     credentials: true,
   });
 
-  // ⭐ Validation Pipes
+  /**
+   * 🛡️ Global Validation
+   * حماية + تحويل تلقائي للـ DTOs
+   */
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -29,13 +43,16 @@ async function bootstrap() {
     }),
   );
 
-  // ⭐ ECS/Fargate requires listening on 0.0.0.0
+  /**
+   * 🚢 ECS / Fargate compatibility
+   * لازم يسمع على 0.0.0.0
+   */
   const port = process.env.PORT ?? 3000;
   await app.listen(port, '0.0.0.0');
 
   console.log(`✅ Kodynex Backend is running on port ${port}`);
-  console.log("📡 Listening on 0.0.0.0 (AWS Fargate compatible)");
-  console.log("📡 Logs are visible in ECS & CloudWatch");
+  console.log('📡 Listening on 0.0.0.0 (AWS ALB compatible)');
+  console.log('📡 Logs available in ECS & CloudWatch');
 }
 
 bootstrap();
