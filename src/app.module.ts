@@ -9,8 +9,12 @@ import { RestaurantsModule } from './restaurants/restaurants.module';
 import { ProductsModule } from './products/products.module';
 import { OrdersModule } from './orders/orders.module';
 
+// ⭐ Public (Catalog / Public APIs)
+import { PublicModule } from './public/public.module';
+
 @Module({
   imports: [
+    // 🌍 Global config (.env)
     ConfigModule.forRoot({
       isGlobal: true,
     }),
@@ -21,6 +25,9 @@ import { OrdersModule } from './orders/orders.module';
     RestaurantsModule,
     ProductsModule,
     OrdersModule,
+
+    // 🌐 Public APIs (no auth)
+    PublicModule,
   ],
   controllers: [AppController],
   providers: [AppService],
