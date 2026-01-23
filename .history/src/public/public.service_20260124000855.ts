@@ -6,22 +6,15 @@ export class PublicService {
   constructor(private readonly prisma: PrismaService) {}
 
   async getCatalogByTenant(tenant: string) {
-    /**
-     * ⚠️ ملاحظة هندسية:
-     * حاليًا لا يوجد slug أو isActive في schema.prisma
-     * لذلك نستخدم id كمعرّف مؤقت للتينانت (MVP)
-     * لاحقًا نضيف slug رسميًا مع migration
-     */
-
     const restaurant = await this.prisma.restaurant.findFirst({
       where: {
-        id: tenant, // 👈 مؤقتًا بدل slug
+        slug: tenant,
+        isActive: true,
       },
       include: {
         products: {
-          orderBy: {
-            createdAt: 'asc',
-          },
+          where: { isActive: true },
+          orderBy: { createdAt: 'asc' },
         },
       },
     });
@@ -34,6 +27,7 @@ export class PublicService {
       restaurant: {
         id: restaurant.id,
         name: restaurant.name,
+        slug: restaurant.slug,
       },
       products: restaurant.products,
     };

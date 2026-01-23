@@ -3,7 +3,7 @@ import {
   NotFoundException,
   ForbiddenException,
 } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
+import { PrismaService } from '../../prisma/prisma.service';
 
 import { OrderStatus } from '@prisma/client';
 
@@ -110,21 +110,25 @@ export class OrdersService {
     }
 
     // 3) منع الانتقال الخاطئ بين الحالات
-    const validTransitions: Record<OrderStatus, OrderStatus[]> = {
-      [OrderStatus.PENDING]: [OrderStatus.ACCEPTED],
-      [OrderStatus.ACCEPTED]: [OrderStatus.PREPARING],
-      [OrderStatus.PREPARING]: [],
-      [OrderStatus.DELIVERED]: [],
-      [OrderStatus.CANCELLED]: [],
-    };
+const validTransitions: Record<OrderStatus, OrderStatus[]> = {
+  [OrderStatus.PENDING]: [OrderStatus.ACCEPTED],
+  [OrderStatus.ACCEPTED]: [OrderStatus.PREPARING],
+  [OrderStatus.PREPARING]: [],
+  [OrderStatus.DELIVERED]: [],
+  [OrderStatus.CANCELLED]: [],
+};
 
-    const allowed = validTransitions[order.status];
 
-    if (!allowed.includes(newStatus)) {
-      throw new ForbiddenException(
-        `لا يمكن الانتقال من ${order.status} إلى ${newStatus}`,
-      );
-    }
+
+
+const allowed = validTransitions[order.status];
+
+if (!allowed.includes(newStatus)) {
+  throw new ForbiddenException(
+    `لا يمكن الانتقال من ${order.status} إلى ${newStatus}`,
+  );
+}
+
 
     // 4) تحديث
     return await this.prisma.order.update({
@@ -133,3 +137,4 @@ export class OrdersService {
     });
   }
 }
+
