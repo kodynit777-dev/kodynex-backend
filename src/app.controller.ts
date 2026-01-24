@@ -9,16 +9,28 @@ export class AppController {
     private readonly prisma: PrismaService,
   ) {}
 
+  // 🔹 Test 0: Root
   @Get()
   getHello(): string {
     return this.appService.getHello();
   }
 
+  // 🔹 Test 1: أبسط Endpoint ممكن
+  @Get('ping')
+  ping() {
+    return {
+      ok: true,
+      service: 'kodynex-backend',
+    };
+  }
+
+  // 🔹 Test 2: Health
   @Get('health')
   health() {
     return { status: 'OK' };
   }
 
+  // 🔹 Test 3: DB Health
   @Get('db-health')
   async dbHealth() {
     await this.prisma.$queryRaw`SELECT 1`;
