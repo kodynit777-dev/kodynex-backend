@@ -6,16 +6,9 @@ export class PublicService {
   constructor(private readonly prisma: PrismaService) {}
 
   async getCatalogByTenant(tenant: string) {
-    /**
-     * ⚠️ ملاحظة هندسية:
-     * حاليًا لا يوجد slug أو isActive في schema.prisma
-     * لذلك نستخدم id كمعرّف مؤقت للتينانت (MVP)
-     * لاحقًا نضيف slug رسميًا مع migration
-     */
-
     const restaurant = await this.prisma.restaurant.findFirst({
       where: {
-        id: tenant, // 👈 مؤقتًا بدل slug
+        id: tenant, // مؤقتًا نستخدم id
       },
       include: {
         products: {
@@ -30,12 +23,42 @@ export class PublicService {
       throw new NotFoundException('Restaurant not found');
     }
 
+    // ✅ نرجّع الشكل اللي الواجهة تتوقعه
     return {
-      restaurant: {
-        id: restaurant.id,
-        name: restaurant.name,
+      data: {
+        restaurant: {
+          id: restaurant.id,
+          name: {
+            ar: restaurant.name,
+            en: restaurant.name,
+          },
+        },
+
+        categories: [
+          {
+            key: 'general',
+            name: {
+              ar: 'القائمة',
+              en: 'Menu',
+            },
+          },
+        ],
+
+        products: restaurant.products.map(product => ({
+          id: product.id,
+          name: {
+            ar: product.name,
+            en: product.name,
+          },
+          description: {
+            ar: product.description ?? '',
+            en: product.description ?? '',
+          },
+          price: product.price,
+          image: product.image,
+          categoryKey: 'general',
+        })),
       },
-      products: restaurant.products,
     };
   }
 }
