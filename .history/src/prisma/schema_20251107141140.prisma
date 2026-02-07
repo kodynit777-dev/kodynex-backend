@@ -1,9 +1,0 @@
-mkdir prisma
-@'
-generator client { provider = "prisma-client-js" }
-
-datasource db {
-  provider = "postgresql"   // غيّرها لـ "mysql" إذا قاعدتك MySQL
-  url      = env("DATABASE_URL")
-}
-'@ | Out-File -FilePath prisma\schema.prisma -Encoding utf8 -NoNewline
