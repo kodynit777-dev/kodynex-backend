@@ -12,13 +12,4 @@ export class PublicController {
   async getCatalog(@Param('tenant') tenant: string) {
     return this.publicService.getCatalogByTenant(tenant);
   }
-
-  /**
-   * GET /api/public/tenants
-   * (Temporary - for demo setup)
-   */
-  @Get('tenants')
-  async listTenants() {
-    return this.publicService.listTenants();
-  }
 }
