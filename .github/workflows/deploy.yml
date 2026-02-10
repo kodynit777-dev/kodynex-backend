@@ -1,12 +1,17 @@
 name: Deploy to AWS ECS
 
 on:
+  # تشغيل تلقائي عند أي push على main
   push:
     branches:
       - main
 
+  # تشغيل يدوي من GitHub Actions (Run workflow)
+  workflow_dispatch:
+
 jobs:
   deploy:
+    name: Build & Deploy to ECS
     runs-on: ubuntu-latest
 
     permissions:
@@ -21,29 +26,42 @@ jobs:
       CONTAINER_NAME: "kodynex-backend"
 
     steps:
+      # سحب الكود من GitHub
       - name: Checkout code
         uses: actions/checkout@v3
 
+      # ربط GitHub مع AWS باستخدام OIDC (بدون مفاتيح)
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
           aws-region: ${{ env.AWS_REGION }}
           role-to-assume: arn:aws:iam::440946410696:role/github-deploy-role
 
+      # تسجيل الدخول إلى Amazon ECR
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v1
 
+      # بناء Docker Image + رفعه إلى ECR
       - name: Build, tag, and push image to ECR
         run: |
           IMAGE_URI="${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPO }}:latest"
+
+          echo "Building image: $IMAGE_URI"
+
           docker build -t $IMAGE_URI .
+
           docker push $IMAGE_URI
 
+      # إعادة نشر الخدمة في ECS (Force Redeploy)
       - name: Deploy to Amazon ECS
         run: |
+          echo "Deploying to ECS..."
+
           aws ecs update-service \
             --cluster $CLUSTER \
             --service $SERVICE \
             --force-new-deployment \
             --region $AWS_REGION
+
+          echo "Deployment triggered successfully ✅"
