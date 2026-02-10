@@ -3,7 +3,7 @@ import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
 
 async function bootstrap() {
-  console.log('🚀 Starting Kodynex Backend...');
+  console.log('🚀 NEW VERSION 2026-02-10');
 
   const app = await NestFactory.create(AppModule);
 
@@ -61,3 +61,4 @@ async function bootstrap() {
 }
 
 bootstrap();
+
