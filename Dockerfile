@@ -1,41 +1,27 @@
-# FORCE REBUILD 2026-02-10T18:25
-# ------------------------
-# -----------------------------
-# Stage 1: Build the application
-# -----------------------------
+# Stage 1: Build
 FROM node:20-alpine AS builder
 WORKDIR /app
 
-# Install dependencies
 COPY package*.json ./
 RUN npm install
 
-# Copy the full source
 COPY . .
 
-# Generate Prisma client
-RUN npx prisma generate
-
-# Build the project
-RUN npm run build
+# Compile TypeScript manually
+RUN npx tsc -p tsconfig.build.json
 
 
-# -----------------------------
-# Stage 2: Production image
-# -----------------------------
+# Stage 2: Production
 FROM node:20-alpine
 WORKDIR /app
 
-# Install only production deps
 COPY package*.json ./
 RUN npm install --omit=dev
 
-# Copy dist + prisma client + prisma schema
 COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
+COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/prisma ./prisma
 
-# Expose port
 EXPOSE 3000
 
 CMD ["node", "dist/main.js"]
