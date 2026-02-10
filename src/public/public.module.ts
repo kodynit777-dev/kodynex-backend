@@ -8,4 +8,10 @@ import { PrismaService } from '../prisma/prisma.service';
   providers: [PublicService, PrismaService],
   exports: [PublicService], // 👈 مهم
 })
+  export class PublicModule {
+  constructor() {
+    console.log('🔥 PublicModule Loaded');
+  }
+}
+
 export class PublicModule {}
