@@ -14,11 +14,11 @@ RUN npm install
 # Copy source
 COPY . .
 
-# Generate Prisma Client
+# Generate Prisma
 RUN npx prisma generate
 
-# Build with explicit output
-RUN npx nest build --path dist
+# Build (official Nest way)
+RUN npm run build
 
 
 # =========================
