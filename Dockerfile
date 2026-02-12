@@ -1,10 +1,10 @@
 # ---------- Builder ----------
-FROM node:20-alpine AS builder
+FROM node:20-bookworm-slim AS builder
 
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm install
+RUN npm ci
 
 COPY . .
 
@@ -13,16 +13,18 @@ RUN npm run build
 
 
 # ---------- Production ----------
-FROM node:20-alpine
+FROM node:20-bookworm-slim
 
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm install --omit=dev
+RUN npm ci --omit=dev
 
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
+
+ENV NODE_ENV=production
 
 EXPOSE 3000
 
