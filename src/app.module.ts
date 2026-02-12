@@ -11,6 +11,7 @@ import { OrdersModule } from './orders/orders.module';
 
 // ⭐ Public (Catalog / Public APIs)
 import { PublicModule } from './public/public.module';
+import { PrismaModule } from './prisma/prisma.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { PublicModule } from './public/public.module';
     ConfigModule.forRoot({
       isGlobal: true,
     }),
+    PrismaModule,
 
     // ✅ Project modules
     AuthModule,
