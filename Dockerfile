@@ -1,12 +1,11 @@
 # ---------- Builder ----------
-FROM node:20-bookworm-slim AS builder
+FROM node:20-bullseye-slim AS builder
 
 WORKDIR /app
 
-# 🔑 تثبيت OpenSSL 1.1
+# تثبيت OpenSSL 1.1 (موجود في bullseye)
 RUN apt-get update && apt-get install -y \
     openssl \
-    libssl1.1 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY package*.json ./
@@ -19,14 +18,12 @@ RUN npm run build
 
 
 # ---------- Production ----------
-FROM node:20-bookworm-slim
+FROM node:20-bullseye-slim
 
 WORKDIR /app
 
-# 🔑 تثبيت OpenSSL 1.1
 RUN apt-get update && apt-get install -y \
     openssl \
-    libssl1.1 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY package*.json ./
