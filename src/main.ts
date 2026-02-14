@@ -3,7 +3,7 @@ import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
 
 async function bootstrap() {
-  console.log('🚀 NEW VERSION 2026-02-10');
+  console.log('🚀 VERSION: v36');
 
   const app = await NestFactory.create(AppModule);
 
@@ -20,21 +20,19 @@ async function bootstrap() {
    * يدعم Expo + Web + Domains مستقبلية
    */
   app.enableCors({
-  origin: [
-    'http://localhost:19006',
-    'http://localhost:3000',
-    'http://localhost:8081',   // ✅ Web Expo
-    'http://127.0.0.1:3000',
-    process.env.EXPO_URL,
-    process.env.FRONTEND_URL,
-  ].filter(Boolean),
+    origin: [
+      'http://localhost:19006',
+      'http://localhost:3000',
+      'http://localhost:8081', // ✅ Web Expo
+      'http://127.0.0.1:3000',
+      process.env.EXPO_URL,
+      process.env.FRONTEND_URL,
+    ].filter(Boolean),
 
-  methods: ['GET', 'POST', 'PATCH', 'DELETE', 'PUT', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true,
-});
-
-
+    methods: ['GET', 'POST', 'PATCH', 'DELETE', 'PUT', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    credentials: true,
+  });
 
   /**
    * 🛡️ Global Validation
@@ -61,4 +59,3 @@ async function bootstrap() {
 }
 
 bootstrap();
-
