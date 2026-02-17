@@ -26,6 +26,7 @@
     "removeComments": true,
     "skipLibCheck": true
   },
-  "include": ["src/**/*.ts"],
+  "include": ["src/**/*.ts",  "src/prisma/**/*.ts"
+],
   "exclude": ["node_modules", "dist", "test", "**/*spec.ts"]
 }
