@@ -30,7 +30,7 @@ export class PublicService {
 
     const restaurant = await this.prisma.restaurant.findFirst({
       where: {
-        slug: tenant,
+        id: tenant,
       },
       include: {
         products: {
