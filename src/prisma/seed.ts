@@ -1,4 +1,5 @@
 import { PrismaClient, UserRole } from '@prisma/client';
+import * as bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();
 
@@ -8,7 +9,15 @@ async function main() {
   const OWNER_PHONE = '+966500000000';
   const CUSTOMER_PHONE = '+966511111111';
 
+  const DEMO_PASSWORD = 'demo123456';
+
   console.log('🌱 Running enterprise seed...');
+
+  // =========================
+  // Hash password (once)
+  // =========================
+
+  const hashedPassword = await bcrypt.hash(DEMO_PASSWORD, 10);
 
   /* =========================
      1) Owner
@@ -19,7 +28,7 @@ async function main() {
     update: {},
     create: {
       phoneE164: OWNER_PHONE,
-      password: 'demo123456',
+      password: hashedPassword,
       name: 'Demo Owner',
       role: UserRole.OWNER,
       phoneVerifiedAt: new Date(),
@@ -37,7 +46,7 @@ async function main() {
     update: {},
     create: {
       phoneE164: CUSTOMER_PHONE,
-      password: 'demo123456',
+      password: hashedPassword,
       name: 'Demo Customer',
       role: UserRole.CUSTOMER,
       phoneVerifiedAt: new Date(),
@@ -89,7 +98,7 @@ async function main() {
      5) Branch
   ========================= */
 
-  const branch = await prisma.branch.upsert({
+  await prisma.branch.upsert({
     where: {
       id: 'demo-branch', // fixed id for repeatable seed
     },

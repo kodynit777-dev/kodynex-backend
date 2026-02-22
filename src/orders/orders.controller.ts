@@ -8,32 +8,32 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { OrdersService } from './orders.service';
+
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { GetUser } from '../auth/decorators/get-user.decorator';
 
 import { UpdateStatusDto } from './dto/update-status.dto';
+import { CreateOrderDto } from './dto/create-order.dto';
 
 @Controller('orders')
 @UseGuards(JwtAuthGuard)
 export class OrdersController {
   constructor(private readonly ordersService: OrdersService) {}
 
+  // ===============================
   // إنشاء طلب
+  // ===============================
   @Post()
   async createOrder(
     @GetUser('id') userId: string,
-    @Body()
-    body: {
-      restaurantId: string;
-      items: { productId: string; quantity: number }[];
-    },
+    @Body() dto: CreateOrderDto,
   ) {
     const order = await this.ordersService.createOrder(
       userId,
-      body.restaurantId,
-      body.items,
+      dto.restaurantId,
+      dto.items,
     );
 
     return {
@@ -43,7 +43,9 @@ export class OrdersController {
     };
   }
 
+  // ===============================
   // عرض طلبات المستخدم
+  // ===============================
   @Get('my')
   async myOrders(@GetUser('id') userId: string) {
     const orders = await this.ordersService.myOrders(userId);
@@ -55,15 +57,13 @@ export class OrdersController {
     };
   }
 
-  // عرض طلبات مطعم لصاحب المطعم
-  @Get('/restaurant/:id')
+  // ===============================
+  // عرض طلبات مطعم (للصاحب)
+  // ===============================
+  @Get('restaurant/:id')
   @UseGuards(RolesGuard)
   @Roles('OWNER', 'ADMIN')
-  async restaurantOrders(
-    @GetUser('id') ownerId: string,
-    @Param('id') restaurantId: string,
-  ) {
-    // استخدام الدالة الصحيحة من service
+  async restaurantOrders(@Param('id') restaurantId: string) {
     const orders = await this.ordersService.getRestaurantOrders(restaurantId);
 
     return {
@@ -73,7 +73,9 @@ export class OrdersController {
     };
   }
 
+  // ===============================
   // تغيير حالة الطلب
+  // ===============================
   @Patch(':id/status')
   @UseGuards(RolesGuard)
   @Roles('OWNER', 'ADMIN')

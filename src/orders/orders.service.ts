@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   ForbiddenException,
+  BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -11,58 +12,85 @@ import { OrderStatus } from '@prisma/client';
 export class OrdersService {
   constructor(private prisma: PrismaService) {}
 
-  // إنشاء طلب
+  // إنشاء طلب (نسخة احترافية)
   async createOrder(
     userId: string,
     restaurantId: string,
     items: { productId: string; quantity: number }[],
   ) {
-    // 1) تحقق أن المطعم موجود
-    const restaurant = await this.prisma.restaurant.findUnique({
-      where: { id: restaurantId },
-    });
-
-    if (!restaurant) {
-      throw new NotFoundException('المطعم غير موجود');
+    if (!items || items.length === 0) {
+      throw new BadRequestException('السلة فارغة');
     }
 
-    // 2) تحقق من المنتجات
-    const productIds = items.map((i) => i.productId);
+    return this.prisma.$transaction(async (tx) => {
+      // 1️⃣ تحقق أن المطعم موجود
+      const restaurant = await tx.restaurant.findUnique({
+        where: { id: restaurantId },
+      });
 
-    const products = await this.prisma.product.findMany({
-      where: { id: { in: productIds } },
-    });
-
-    if (products.length !== items.length) {
-      throw new NotFoundException('أحد المنتجات غير موجود');
-    }
-
-    // 3) حساب السعر
-    let totalPrice = 0;
-
-    for (const item of items) {
-      const product = products.find((p) => p.id === item.productId);
-      if (!product) {
-        throw new NotFoundException(`المنتج غير موجود: ${item.productId}`);
+      if (!restaurant) {
+        throw new NotFoundException('المطعم غير موجود');
       }
-      totalPrice += product.price * item.quantity;
-    }
 
-    // 4) إنشاء الطلب
-    return await this.prisma.order.create({
-      data: {
-        userId,
-        restaurantId,
-        totalPrice,
-        status: OrderStatus.PENDING,
-        items: {
-          create: items.map((item) => ({
-            productId: item.productId,
-            quantity: item.quantity,
-          })),
+      // 2️⃣ جلب المنتجات والتأكد أنها تتبع نفس المطعم وغير محذوفة
+      const productIds = items.map((i) => i.productId);
+
+      const products = await tx.product.findMany({
+        where: {
+          id: { in: productIds },
+          restaurantId,
+          deletedAt: null,
         },
-      },
-      include: { items: true },
+      });
+
+      if (products.length !== items.length) {
+        throw new BadRequestException('بعض المنتجات غير موجودة');
+      }
+
+      // 3️⃣ حساب السعر من DB (مو من الفرونت)
+      let totalPrice = 0;
+
+      const orderItemsData = items.map((item) => {
+        const product = products.find((p) => p.id === item.productId);
+
+        if (!product) {
+          throw new NotFoundException(`المنتج غير موجود: ${item.productId}`);
+        }
+
+        const price = Number(product.price); // Decimal → number
+        const subtotal = price * item.quantity;
+
+        totalPrice += subtotal;
+
+        return {
+          productId: product.id,
+          quantity: item.quantity,
+          price: product.price, // snapshot
+        };
+      });
+
+      // 4️⃣ إنشاء الطلب + العناصر
+      const order = await tx.order.create({
+        data: {
+          userId,
+          restaurantId,
+          totalPrice,
+          status: OrderStatus.PENDING,
+          items: {
+            create: orderItemsData,
+          },
+        },
+        include: {
+          items: {
+            include: {
+              product: true,
+            },
+          },
+          restaurant: true,
+        },
+      });
+
+      return order;
     });
   }
 
@@ -92,9 +120,8 @@ export class OrdersService {
     });
   }
 
-  // Day 10 — تغيير حالة الطلب
+  // تغيير حالة الطلب
   async updateStatus(orderId: string, ownerId: string, newStatus: OrderStatus) {
-    // 1) هل الطلب موجود؟
     const order = await this.prisma.order.findUnique({
       where: { id: orderId },
       include: { restaurant: true },
@@ -104,12 +131,10 @@ export class OrdersService {
       throw new NotFoundException('الطلب غير موجود');
     }
 
-    // 2) حماية — لازم يكون صاحب المطعم
     if (order.restaurant.ownerId !== ownerId) {
       throw new ForbiddenException('غير مسموح لك بتغيير حالة الطلب');
     }
 
-    // 3) منع الانتقال الخاطئ بين الحالات
     const validTransitions: Record<OrderStatus, OrderStatus[]> = {
       [OrderStatus.PENDING]: [OrderStatus.ACCEPTED],
       [OrderStatus.ACCEPTED]: [OrderStatus.PREPARING],
@@ -126,7 +151,6 @@ export class OrdersService {
       );
     }
 
-    // 4) تحديث
     return await this.prisma.order.update({
       where: { id: orderId },
       data: { status: newStatus },
