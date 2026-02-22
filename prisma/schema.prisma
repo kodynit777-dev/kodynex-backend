@@ -7,70 +7,302 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+//
+// ===============================
+// Core
+// ===============================
+//
+
 model User {
-  id              String       @id @default(cuid())
-  phoneE164       String       @unique
+  id              String   @id @default(cuid())
+  phoneE164       String   @unique
   name            String?
-  email           String?      @unique
+  email           String?  @unique
   password        String
-  role            UserRole     @default(CUSTOMER)
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
+  role            UserRole @default(CUSTOMER)
+
   phoneVerifiedAt DateTime?
-  orders          Order[]
-  restaurants     Restaurant[]
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  deletedAt       DateTime?
+
+  orders        Order[]
+  restaurants   Restaurant[]
+  loyaltyLedger LoyaltyLedger[]
+  auditLogs     AuditLog[] @relation("AuditActor")
+  payments      PaymentIntent[]
+
+  @@index([role])
+  @@index([deletedAt])
 }
 
 model Restaurant {
   id          String   @id @default(cuid())
   name        String
-
-  slug        String   @unique   // 👈 أضف هذا السطر
-
+  slug        String   @unique
   description String?
   logo        String?
+
   ownerId     String
+  owner       User     @relation(fields: [ownerId], references: [id])
+
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
 
-  orders      Order[]
-  products    Product[]
+  branches       Branch[]
+  products       Product[]
+  orders         Order[]
+  settings       TenantSetting?
+  loyaltyLedgers LoyaltyLedger[]
+  auditLogs      AuditLog[]
 
-  owner       User     @relation(fields: [ownerId], references: [id])
+  @@index([ownerId])
+  @@index([slug])
+  @@index([deletedAt])
 }
+
+model TenantSetting {
+  id           String   @id @default(cuid())
+  restaurantId String   @unique
+
+  flags Json @default("{}")
+  theme Json @default("{}")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id])
+}
+
+//
+// ===============================
+// Catalog
+// ===============================
+//
 
 model Product {
-  id           String      @id @default(cuid())
+  id           String   @id @default(cuid())
   name         String
-  price        Float
   description  String?
   image        String?
+
+  price Decimal @db.Decimal(10, 2)
+
   restaurantId String
-  createdAt    DateTime    @default(now())
-  orderItems   OrderItem[]
-  restaurant   Restaurant  @relation(fields: [restaurantId], references: [id])
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+
+  orderItems OrderItem[]
+
+  @@index([restaurantId])
+  @@index([deletedAt])
+  @@unique([name, restaurantId])
 }
 
-model Order {
-  id           String      @id @default(cuid())
-  userId       String
+//
+// ===============================
+// Branch
+// ===============================
+//
+
+model Branch {
+  id           String   @id @default(cuid())
   restaurantId String
-  totalPrice   Float
-  status       OrderStatus @default(PENDING)
-  createdAt    DateTime    @default(now())
-  restaurant   Restaurant  @relation(fields: [restaurantId], references: [id])
-  user         User        @relation(fields: [userId], references: [id])
-  items        OrderItem[]
+  name         String
+  address      String?
+  phone        String?
+  isActive     Boolean  @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id])
+  orders     Order[]
+
+  @@index([restaurantId])
+  @@index([isActive])
+  @@index([deletedAt])
+}
+
+//
+// ===============================
+// Orders
+// ===============================
+//
+
+model Order {
+  id String @id @default(cuid())
+
+  userId String
+  user   User @relation(fields: [userId], references: [id])
+
+  restaurantId String
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id])
+
+  branchId String?
+  branch   Branch? @relation(fields: [branchId], references: [id])
+
+  status OrderStatus @default(PENDING)
+
+  totalPrice Decimal @db.Decimal(10, 2)
+
+  notes String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+
+  items         OrderItem[]
+  paymentIntent PaymentIntent?
+
+  @@index([userId])
+  @@index([restaurantId])
+  @@index([branchId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([updatedAt])
+  @@index([deletedAt])
 }
 
 model OrderItem {
-  id        String  @id @default(cuid())
-  orderId   String
+  id String @id @default(cuid())
+
+  orderId String
+  order   Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
   productId String
-  quantity  Int     @default(1)
-  order     Order   @relation(fields: [orderId], references: [id])
   product   Product @relation(fields: [productId], references: [id])
+
+  quantity Int @default(1)
+  price    Decimal @db.Decimal(10, 2)
+
+  createdAt DateTime @default(now())
+
+  @@index([orderId])
+  @@index([productId])
 }
+
+//
+// ===============================
+// Payments
+// ===============================
+//
+
+model PaymentIntent {
+  id String @id @default(cuid())
+
+  orderId String @unique
+  order   Order @relation(fields: [orderId], references: [id])
+
+  userId String?
+  user   User? @relation(fields: [userId], references: [id])
+
+  provider PaymentProvider
+  externalId String?
+
+  amount   Decimal @db.Decimal(10, 2)
+  currency String  @default("SAR")
+
+  status PaymentStatus @default(PENDING)
+
+  idempotencyKey String? @unique
+  metadata Json @default("{}")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  refunds PaymentRefund[]
+
+  @@index([provider])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model PaymentRefund {
+  id String @id @default(cuid())
+
+  paymentIntentId String
+  paymentIntent   PaymentIntent @relation(fields: [paymentIntentId], references: [id])
+
+  externalId String?
+  amount Decimal @db.Decimal(10, 2)
+
+  status PaymentRefundStatus @default(PENDING)
+  reason String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([paymentIntentId])
+  @@index([status])
+}
+
+//
+// ===============================
+// Loyalty
+// ===============================
+//
+
+model LoyaltyLedger {
+  id String @id @default(cuid())
+
+  userId String
+  user   User @relation(fields: [userId], references: [id])
+
+  restaurantId String?
+  restaurant   Restaurant? @relation(fields: [restaurantId], references: [id])
+
+  points   Int
+  reason   String
+  metadata Json @default("{}")
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([restaurantId])
+  @@index([createdAt])
+}
+
+//
+// ===============================
+// Audit
+// ===============================
+//
+
+model AuditLog {
+  id String @id @default(cuid())
+
+  actorId String?
+  actor   User? @relation("AuditActor", fields: [actorId], references: [id])
+
+  restaurantId String?
+  restaurant   Restaurant? @relation(fields: [restaurantId], references: [id])
+
+  action   String
+  entity   String?
+  entityId String?
+
+  ip        String?
+  userAgent String?
+  metadata  Json @default("{}")
+
+  createdAt DateTime @default(now())
+
+  @@index([actorId])
+  @@index([restaurantId])
+  @@index([action])
+}
+
+//
+// ===============================
+// Enums
+// ===============================
+//
 
 enum UserRole {
   ADMIN
@@ -84,4 +316,26 @@ enum OrderStatus {
   PREPARING
   DELIVERED
   CANCELLED
+}
+
+enum PaymentProvider {
+  TAP
+  MOYASAR
+  HYPERPAY
+}
+
+enum PaymentStatus {
+  PENDING
+  REQUIRES_ACTION
+  AUTHORIZED
+  CAPTURED
+  FAILED
+  CANCELLED
+  REFUNDED
+}
+
+enum PaymentRefundStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
 }
