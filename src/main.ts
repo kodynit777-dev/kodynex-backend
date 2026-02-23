@@ -3,7 +3,7 @@ import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
 
 async function bootstrap() {
- console.log('🚀 VERSION: v52');
+console.log('🚀 VERSION: v43');
 
   const app = await NestFactory.create(AppModule);
 
