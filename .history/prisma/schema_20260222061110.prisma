@@ -18,12 +18,7 @@ model User {
   phoneE164       String   @unique
   name            String?
   email           String?  @unique
-
-  password        String?  // ✅ صار optional (OTP-friendly)
-
-  otpCode         String?   // ✅ كود مؤقت
-  otpExpiresAt    DateTime? // ✅ وقت الانتهاء
-
+  password        String
   role            UserRole @default(CUSTOMER)
 
   phoneVerifiedAt DateTime?

@@ -21,7 +21,6 @@ export class AuthService {
       where: { phoneE164 },
     });
 
-    // إنشاء مستخدم تلقائي
     if (!user) {
       user = await this.prisma.user.create({
         data: {
@@ -31,8 +30,7 @@ export class AuthService {
       });
     }
 
-    // DEV OTP فقط
-    const otp = '111111';
+    const otp = '111111'; // DEV ONLY
 
     const expires = new Date();
     expires.setMinutes(expires.getMinutes() + 5);
@@ -80,7 +78,6 @@ export class AuthService {
       throw new BadRequestException('OTP expired');
     }
 
-    // تفعيل الجوال + حذف OTP
     await this.prisma.user.update({
       where: { id: user.id },
       data: {
@@ -90,42 +87,6 @@ export class AuthService {
       },
     });
 
-    return this.generateToken(user);
-  }
-
-  // =============================
-  // Complete Profile
-  // =============================
-  async completeProfile(userId: string, name: string, email?: string) {
-    if (!name || name.trim().length < 2) {
-      throw new BadRequestException('Name is required');
-    }
-
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-    });
-
-    if (!user) {
-      throw new BadRequestException('User not found');
-    }
-
-    const updatedUser = await this.prisma.user.update({
-      where: { id: userId },
-      data: {
-        name: name.trim(),
-        email: email?.trim() || null,
-      },
-    });
-
-    const { password, otpCode, otpExpiresAt, ...safeUser } = updatedUser;
-
-    return safeUser;
-  }
-
-  // =============================
-  // Generate JWT
-  // =============================
-  private async generateToken(user: any) {
     const payload = {
       id: user.id,
       phoneE164: user.phoneE164,
