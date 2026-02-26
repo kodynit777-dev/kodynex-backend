@@ -3,10 +3,9 @@ import {
   Post,
   Get,
   Body,
+  Param,
   Patch,
   UseGuards,
-  Req,
-  Param,
 } from '@nestjs/common';
 import { OrdersService } from './orders.service';
 
@@ -14,17 +13,18 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { GetUser } from '../auth/decorators/get-user.decorator';
-import { TenantGuard } from '../auth/guards/tenant.guard';
 
 import { UpdateStatusDto } from './dto/update-status.dto';
 import { CreateOrderDto } from './dto/create-order.dto';
 
-@UseGuards(TenantGuard, JwtAuthGuard)
 @Controller('orders')
+@UseGuards(JwtAuthGuard)
 export class OrdersController {
   constructor(private readonly ordersService: OrdersService) {}
 
-  // 🛒 إنشاء طلب
+  // ===============================
+  // إنشاء طلب
+  // ===============================
   @Post()
   async createOrder(
     @GetUser('id') userId: string,
@@ -45,11 +45,12 @@ export class OrdersController {
       data: order,
     };
   }
-
-  // 👤 عرض طلبات المستخدم (معزولة حسب المطعم)
+  // ===============================
+  // عرض طلبات المستخدم
+  // ===============================
   @Get('my')
-  async myOrders(@GetUser('id') userId: string, @Req() req) {
-    const orders = await this.ordersService.myOrders(userId, req.tenantId);
+  async myOrders(@GetUser('id') userId: string) {
+    const orders = await this.ordersService.myOrders(userId);
 
     return {
       status: true,
@@ -58,15 +59,14 @@ export class OrdersController {
     };
   }
 
-  // 🏪 عرض طلبات المطعم (بدون param id — SaaS صحيح)
-  @Get('restaurant')
+  // ===============================
+  // عرض طلبات مطعم (للصاحب)
+  // ===============================
+  @Get('restaurant/:id')
   @UseGuards(RolesGuard)
   @Roles('OWNER', 'ADMIN')
-  async restaurantOrders(@GetUser('id') ownerId: string, @Req() req) {
-    const orders = await this.ordersService.getRestaurantOrders(
-      req.tenantId,
-      ownerId,
-    );
+  async restaurantOrders(@Param('id') restaurantId: string) {
+    const orders = await this.ordersService.getRestaurantOrders(restaurantId);
 
     return {
       status: true,
@@ -75,20 +75,20 @@ export class OrdersController {
     };
   }
 
-  // 🔄 تغيير حالة الطلب
+  // ===============================
+  // تغيير حالة الطلب
+  // ===============================
   @Patch(':id/status')
   @UseGuards(RolesGuard)
   @Roles('OWNER', 'ADMIN')
   async updateStatus(
     @Param('id') orderId: string,
-    @GetUser('id') ownerId: string,
-    @Req() req,
     @Body() dto: UpdateStatusDto,
+    @GetUser('id') ownerId: string,
   ) {
     const updated = await this.ordersService.updateStatus(
       orderId,
       ownerId,
-      req.tenantId,
       dto.status,
     );
 

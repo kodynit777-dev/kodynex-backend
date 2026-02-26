@@ -4,6 +4,7 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+
 import { CreateProductDto } from './dto/create-product.dto';
 
 @Injectable()
@@ -11,35 +12,33 @@ export class ProductsService {
   constructor(private prisma: PrismaService) {}
 
   // =========================================
-  // إنشاء منتج داخل المطعم الحالي (Tenant-aware)
+  // إنشاء منتج داخل مطعم
   // =========================================
-  async create(
-    tenantRestaurantId: string,
-    userId: string,
-    dto: CreateProductDto,
-  ) {
-    // 1) تحقق أن المطعم موجود ويملكه المستخدم
-    const restaurant = await this.prisma.restaurant.findFirst({
-      where: {
-        id: tenantRestaurantId,
-        ownerId: userId,
-      },
+  async create(restaurantId: string, userId: string, dto: CreateProductDto) {
+    // 1) تأكد أن المطعم موجود
+    const restaurant = await this.prisma.restaurant.findUnique({
+      where: { id: restaurantId },
     });
 
     if (!restaurant) {
+      throw new NotFoundException('Restaurant not found');
+    }
+
+    // 2) تأكد أن المستخدم صاحب المطعم أو Admin
+    if (restaurant.ownerId !== userId) {
       throw new ForbiddenException(
         'You are not allowed to add products to this restaurant',
       );
     }
 
-    // 2) إنشاء المنتج
+    // 3) إنشاء المنتج
     const product = await this.prisma.product.create({
       data: {
         name: dto.name,
         price: dto.price,
         description: dto.description,
         image: dto.image,
-        restaurantId: tenantRestaurantId,
+        restaurantId,
       },
     });
 
@@ -47,28 +46,23 @@ export class ProductsService {
   }
 
   // =========================================
-  // جلب جميع منتجات المطعم الحالي (Tenant-safe)
+  // جلب جميع منتجات مطعم معيّن
   // =========================================
-  async list(tenantRestaurantId: string) {
-    return this.prisma.product.findMany({
-      where: {
-        restaurantId: tenantRestaurantId,
-        deletedAt: null,
-      },
+  async list(restaurantId: string) {
+    const products = await this.prisma.product.findMany({
+      where: { restaurantId },
       orderBy: { createdAt: 'desc' },
     });
+
+    return products;
   }
 
   // =========================================
-  // جلب منتج واحد (مع عزل Tenant)
+  // جلب منتج واحد
   // =========================================
-  async findOne(productId: string, tenantRestaurantId: string) {
-    const product = await this.prisma.product.findFirst({
-      where: {
-        id: productId,
-        restaurantId: tenantRestaurantId,
-        deletedAt: null,
-      },
+  async findOne(productId: string) {
+    const product = await this.prisma.product.findUnique({
+      where: { id: productId },
     });
 
     if (!product) {

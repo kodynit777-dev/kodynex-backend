@@ -5,7 +5,6 @@ import {
   Min,
   IsString,
   IsNotEmpty,
-  IsOptional,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -20,17 +19,12 @@ class CreateOrderItemDto {
 }
 
 export class CreateOrderDto {
+  @IsString()
+  @IsNotEmpty()
+  restaurantId: string;
+
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => CreateOrderItemDto)
   items: CreateOrderItemDto[];
-
-  // جاهز للفروع لاحقاً
-  @IsOptional()
-  @IsString()
-  branchId?: string;
-
-  @IsOptional()
-  @IsString()
-  notes?: string;
 }

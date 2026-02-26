@@ -5,41 +5,40 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+
 import { OrderStatus } from '@prisma/client';
 
 @Injectable()
 export class OrdersService {
   constructor(private prisma: PrismaService) {}
 
-  // 🛒 إنشاء طلب (Tenant-aware)
+  // إنشاء طلب (نسخة احترافية)
   async createOrder(
     userId: string,
-    tenantRestaurantId: string, // 👈 يأتي من req.tenantId
+    restaurantId: string,
     items: { productId: string; quantity: number }[],
-    branchId?: string,
-    notes?: string,
   ) {
     if (!items || items.length === 0) {
       throw new BadRequestException('السلة فارغة');
     }
 
     return this.prisma.$transaction(async (tx) => {
-      // 1️⃣ تحقق أن المطعم موجود (عبر Tenant)
+      // 1️⃣ تحقق أن المطعم موجود
       const restaurant = await tx.restaurant.findUnique({
-        where: { id: tenantRestaurantId },
+        where: { id: restaurantId },
       });
 
       if (!restaurant) {
         throw new NotFoundException('المطعم غير موجود');
       }
 
-      // 2️⃣ تحقق المنتجات (لا يسمح بمنتجات من مطعم آخر)
+      // 2️⃣ جلب المنتجات والتأكد أنها تتبع نفس المطعم وغير محذوفة
       const productIds = items.map((i) => i.productId);
 
       const products = await tx.product.findMany({
         where: {
           id: { in: productIds },
-          restaurantId: tenantRestaurantId,
+          restaurantId,
           deletedAt: null,
         },
       });
@@ -48,23 +47,7 @@ export class OrdersService {
         throw new BadRequestException('بعض المنتجات غير موجودة');
       }
 
-      // 3️⃣ تحقق الفرع (إن وجد)
-      if (branchId) {
-        const branch = await tx.branch.findFirst({
-          where: {
-            id: branchId,
-            restaurantId: tenantRestaurantId,
-            deletedAt: null,
-            isActive: true,
-          },
-        });
-
-        if (!branch) {
-          throw new ForbiddenException('الفرع غير صالح لهذا المطعم');
-        }
-      }
-
-      // 4️⃣ حساب السعر من DB
+      // 3️⃣ حساب السعر من DB (مو من الفرونت)
       let totalPrice = 0;
 
       const orderItemsData = items.map((item) => {
@@ -74,7 +57,7 @@ export class OrdersService {
           throw new NotFoundException(`المنتج غير موجود: ${item.productId}`);
         }
 
-        const price = Number(product.price);
+        const price = Number(product.price); // Decimal → number
         const subtotal = price * item.quantity;
 
         totalPrice += subtotal;
@@ -86,13 +69,11 @@ export class OrdersService {
         };
       });
 
-      // 5️⃣ إنشاء الطلب
+      // 4️⃣ إنشاء الطلب + العناصر
       const order = await tx.order.create({
         data: {
           userId,
-          restaurantId: tenantRestaurantId, // 👈 من Tenant فقط
-          branchId,
-          notes,
+          restaurantId,
           totalPrice,
           status: OrderStatus.PENDING,
           items: {
@@ -101,7 +82,9 @@ export class OrdersService {
         },
         include: {
           items: {
-            include: { product: true },
+            include: {
+              product: true,
+            },
           },
           restaurant: true,
         },
@@ -111,13 +94,10 @@ export class OrdersService {
     });
   }
 
-  // 👤 عرض طلبات المستخدم (معزولة حسب Tenant)
-  async myOrders(userId: string, tenantRestaurantId: string) {
-    return this.prisma.order.findMany({
-      where: {
-        userId,
-        restaurantId: tenantRestaurantId, // 👈 عزل SaaS
-      },
+  // عرض طلبات المستخدم
+  async myOrders(userId: string) {
+    return await this.prisma.order.findMany({
+      where: { userId },
       orderBy: { createdAt: 'desc' },
       include: {
         items: { include: { product: true } },
@@ -126,22 +106,10 @@ export class OrdersService {
     });
   }
 
-  // 🏪 عرض طلبات المطعم (Owner check عبر DB)
-  async getRestaurantOrders(tenantRestaurantId: string, ownerId: string) {
-    // تحقق الملكية عبر DB (أقوى أمنيًا)
-    const restaurant = await this.prisma.restaurant.findFirst({
-      where: {
-        id: tenantRestaurantId,
-        ownerId,
-      },
-    });
-
-    if (!restaurant) {
-      throw new ForbiddenException('غير مصرح');
-    }
-
-    return this.prisma.order.findMany({
-      where: { restaurantId: tenantRestaurantId },
+  // عرض طلبات مطعم
+  async getRestaurantOrders(restaurantId: string) {
+    return await this.prisma.order.findMany({
+      where: { restaurantId },
       orderBy: { createdAt: 'desc' },
       include: {
         items: { include: { product: true } },
@@ -152,18 +120,10 @@ export class OrdersService {
     });
   }
 
-  // 🔄 تغيير حالة الطلب (Tenant-aware + Owner check)
-  async updateStatus(
-    orderId: string,
-    ownerId: string,
-    tenantRestaurantId: string,
-    newStatus: OrderStatus,
-  ) {
-    const order = await this.prisma.order.findFirst({
-      where: {
-        id: orderId,
-        restaurantId: tenantRestaurantId, // 👈 يمنع Cross-tenant
-      },
+  // تغيير حالة الطلب
+  async updateStatus(orderId: string, ownerId: string, newStatus: OrderStatus) {
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
       include: { restaurant: true },
     });
 
@@ -191,7 +151,7 @@ export class OrdersService {
       );
     }
 
-    return this.prisma.order.update({
+    return await this.prisma.order.update({
       where: { id: orderId },
       data: { status: newStatus },
     });

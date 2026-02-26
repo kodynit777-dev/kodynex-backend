@@ -13,6 +13,9 @@ import { OrdersModule } from './orders/orders.module';
 import { PublicModule } from './public/public.module';
 import { PrismaModule } from './prisma/prisma.module';
 
+import { APP_GUARD } from '@nestjs/core';
+import { TenantGuard } from './auth/guards/tenant.guard';
+
 @Module({
   imports: [
     // 🌍 Global config (.env)
@@ -32,6 +35,12 @@ import { PrismaModule } from './prisma/prisma.module';
     PublicModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [
+    AppService,
+    {
+      provide: APP_GUARD,
+      useClass: TenantGuard,
+    },
+  ],
 })
 export class AppModule {}
