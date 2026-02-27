@@ -35,12 +35,6 @@ import { TenantGuard } from './auth/guards/tenant.guard';
     PublicModule,
   ],
   controllers: [AppController],
-  providers: [
-    AppService,
-    {
-      provide: APP_GUARD,
-      useClass: TenantGuard,
-    },
-  ],
+  providers: [AppService],
 })
 export class AppModule {}

@@ -10,7 +10,7 @@ import {
 } from '@nestjs/common';
 import { OrdersService } from './orders.service';
 
-import { TenantProtected } from '../auth/decorators/tenant-protected.decorator';
+import { TenantProtected } from '../common/decorators/tenant-protected.decorator';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { GetUser } from '../auth/decorators/get-user.decorator';

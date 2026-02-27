@@ -10,19 +10,19 @@ import {
 import { ProductsService } from './products.service';
 import { CreateProductDto } from './dto/create-product.dto';
 
-import { TenantProtected } from '../auth/decorators/tenant-protected.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { GetUser } from '../auth/decorators/get-user.decorator';
+import { TenantGuard } from '../auth/guards/tenant.guard';
 
-@TenantProtected()
+@UseGuards(TenantGuard)
 @Controller('products')
 export class ProductsController {
   constructor(private readonly productsService: ProductsService) {}
 
   // 🏪 إنشاء منتج (Owner/Admin فقط)
-  @UseGuards(RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('OWNER', 'ADMIN')
   @Post()
   async createProduct(
@@ -31,7 +31,7 @@ export class ProductsController {
     @Body() dto: CreateProductDto,
   ) {
     const product = await this.productsService.create(
-      req.tenantId,
+      req.tenantId, // 👈 من TenantGuard فقط
       userId,
       dto,
     );
@@ -58,7 +58,10 @@ export class ProductsController {
   // 🔎 تفاصيل منتج (معزولة حسب Tenant)
   @Get(':id')
   async findOneProduct(@Param('id') productId: string, @Req() req) {
-    const product = await this.productsService.findOne(productId, req.tenantId);
+    const product = await this.productsService.findOne(
+      productId,
+      req.tenantId, // 👈 يمنع cross-tenant leak
+    );
 
     return {
       status: true,

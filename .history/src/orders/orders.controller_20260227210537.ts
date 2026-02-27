@@ -10,19 +10,20 @@ import {
 } from '@nestjs/common';
 import { OrdersService } from './orders.service';
 
-import { TenantProtected } from '../auth/decorators/tenant-protected.decorator';
-import { RolesGuard } from '../auth/guards/roles.guard';
+import { TenantProtected } from '../common/decorators/tenant-protected.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { GetUser } from '../auth/decorators/get-user.decorator';
+import { TenantGuard } from '../auth/guards/tenant.guard';
 
 import { UpdateStatusDto } from './dto/update-status.dto';
 import { CreateOrderDto } from './dto/create-order.dto';
 
-@TenantProtected()
+@UseGuards(TenantGuard, JwtAuthGuard)
 @Controller('orders')
 export class OrdersController {
   constructor(private readonly ordersService: OrdersService) {}
 
+  // 🛒 إنشاء طلب
   @Post()
   async createOrder(
     @GetUser('id') userId: string,
@@ -44,6 +45,7 @@ export class OrdersController {
     };
   }
 
+  // 👤 عرض طلبات المستخدم (معزولة حسب المطعم)
   @Get('my')
   async myOrders(@GetUser('id') userId: string, @Req() req) {
     const orders = await this.ordersService.myOrders(userId, req.tenantId);
@@ -55,6 +57,7 @@ export class OrdersController {
     };
   }
 
+  // 🏪 عرض طلبات المطعم (بدون param id — SaaS صحيح)
   @Get('restaurant')
   @UseGuards(RolesGuard)
   @Roles('OWNER', 'ADMIN')
@@ -71,6 +74,7 @@ export class OrdersController {
     };
   }
 
+  // 🔄 تغيير حالة الطلب
   @Patch(':id/status')
   @UseGuards(RolesGuard)
   @Roles('OWNER', 'ADMIN')
