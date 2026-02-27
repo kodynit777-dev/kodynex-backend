@@ -3,7 +3,7 @@ import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
 
 async function bootstrap() {
-  console.log('🚀 VERSION: v49');
+  console.log('🚀 VERSION: v50');
 
   const app = await NestFactory.create(AppModule);
 
@@ -30,7 +30,7 @@ async function bootstrap() {
     ].filter(Boolean),
 
     methods: ['GET', 'POST', 'PATCH', 'DELETE', 'PUT', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Tenant'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Tenant', 'x-tenant'],
     credentials: true,
   });
 
