@@ -30,7 +30,7 @@ async function bootstrap() {
     ].filter(Boolean),
 
     methods: ['GET', 'POST', 'PATCH', 'DELETE', 'PUT', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Tenant'],
     credentials: true,
   });
 
