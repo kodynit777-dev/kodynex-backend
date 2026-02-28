@@ -13,8 +13,7 @@ import { OrdersModule } from './orders/orders.module';
 import { PublicModule } from './public/public.module';
 import { PrismaModule } from './prisma/prisma.module';
 
-import { APP_GUARD } from '@nestjs/core';
-import { TenantGuard } from './auth/guards/tenant.guard';
+import { TenantSettingsModule } from './tenant-settings/tenant-settings.module';
 
 @Module({
   imports: [
@@ -22,6 +21,7 @@ import { TenantGuard } from './auth/guards/tenant.guard';
     ConfigModule.forRoot({
       isGlobal: true,
     }),
+
     PrismaModule,
 
     // ✅ Project modules
@@ -31,8 +31,11 @@ import { TenantGuard } from './auth/guards/tenant.guard';
     ProductsModule,
     OrdersModule,
 
-    // 🌐 Public APIs (no auth)
+    // 🌐 Public APIs
     PublicModule,
+
+    // ⭐ جديد: إعدادات التيننت
+    TenantSettingsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
