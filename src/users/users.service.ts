@@ -34,4 +34,17 @@ export class UsersService {
     const { password, ...cleaned } = user;
     return cleaned;
   }
+
+  // 🔹 تحديث البروفايل
+  async updateProfile(userId: string, dto: any) {
+    const user = await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        name: dto.name,
+        email: dto.email,
+      },
+    });
+
+    return this.cleanUser(user);
+  }
 }
