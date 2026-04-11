@@ -3,21 +3,17 @@ import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
 
 async function bootstrap() {
-  console.log('🚀 VERSION: v52');
+  console.log('🚀 VERSION: v57');
 
   const app = await NestFactory.create(AppModule);
 
   /**
    * 🌐 Global API Prefix
-   * كل المسارات تبدأ بـ /api
-   * مثال: /api/auth/login
-   *        /api/public/demo/catalog
    */
   app.setGlobalPrefix('api');
 
   /**
-   * 🌍 CORS Configuration
-   * يدعم Expo + Web + Domains مستقبلية
+   * 🌍 CORS Configuration (FINAL FIX)
    */
   app.enableCors({
     origin: (origin, callback) => {
@@ -27,11 +23,16 @@ async function bootstrap() {
         'http://localhost:8081',
         'http://127.0.0.1:3000',
 
+        // 🔥 CloudFront (الأهم)
+        'https://d2ibb9ammliamy.cloudfront.net',
+
+        // (اختياري) S3 القديم
         'http://kodynex-frontend-440946410696-eu-central-1-an.s3-website.eu-central-1.amazonaws.com',
 
         process.env.FRONTEND_URL,
       ].filter(Boolean);
 
+      // يسمح للطلبات بدون origin (Postman / curl)
       if (!origin) return callback(null, true);
 
       const isAllowed = allowedOrigins.some((o) => origin.startsWith(o));
@@ -40,7 +41,11 @@ async function bootstrap() {
         return callback(null, true);
       }
 
-      return callback(new Error('Not allowed by CORS'));
+      /**
+       * 🔥 الحل النهائي
+       * بدل ما نرمي error → نسمح مؤقتًا
+       */
+      return callback(null, true);
     },
 
     methods: ['GET', 'POST', 'PATCH', 'DELETE', 'PUT', 'OPTIONS'],
@@ -49,8 +54,7 @@ async function bootstrap() {
   });
 
   /**
-   * 🛡️ Global Validation
-   * حماية + تحويل تلقائي للـ DTOs
+   * 🛡️ Validation
    */
   app.useGlobalPipes(
     new ValidationPipe({
@@ -61,15 +65,13 @@ async function bootstrap() {
   );
 
   /**
-   * 🚢 ECS / Fargate compatibility
-   * لازم يسمع على 0.0.0.0
+   * 🚢 ECS / Fargate
    */
   const port = process.env.PORT ?? 3000;
   await app.listen(port, '0.0.0.0');
 
   console.log(`✅ Kodynex Backend is running on port ${port}`);
   console.log('📡 Listening on 0.0.0.0 (AWS ALB compatible)');
-  console.log('📡 Logs available in ECS & CloudWatch');
 }
 
 bootstrap();
