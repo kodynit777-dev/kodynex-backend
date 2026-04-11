@@ -3,7 +3,7 @@ import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
 
 async function bootstrap() {
-  console.log('🚀 VERSION: v50');
+  console.log('🚀 VERSION: v52');
 
   const app = await NestFactory.create(AppModule);
 
@@ -20,14 +20,28 @@ async function bootstrap() {
    * يدعم Expo + Web + Domains مستقبلية
    */
   app.enableCors({
-    origin: [
-      'http://localhost:19006',
-      'http://localhost:3000',
-      'http://localhost:8081', // ✅ Web Expo
-      'http://127.0.0.1:3000',
-      process.env.EXPO_URL,
-      process.env.FRONTEND_URL,
-    ].filter(Boolean),
+    origin: (origin, callback) => {
+      const allowedOrigins = [
+        'http://localhost:19006',
+        'http://localhost:3000',
+        'http://localhost:8081',
+        'http://127.0.0.1:3000',
+
+        'http://kodynex-frontend-440946410696-eu-central-1-an.s3-website.eu-central-1.amazonaws.com',
+
+        process.env.FRONTEND_URL,
+      ].filter(Boolean);
+
+      if (!origin) return callback(null, true);
+
+      const isAllowed = allowedOrigins.some((o) => origin.startsWith(o));
+
+      if (isAllowed) {
+        return callback(null, true);
+      }
+
+      return callback(new Error('Not allowed by CORS'));
+    },
 
     methods: ['GET', 'POST', 'PATCH', 'DELETE', 'PUT', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Tenant', 'x-tenant'],

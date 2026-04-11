@@ -20,14 +20,29 @@ async function bootstrap() {
    * يدعم Expo + Web + Domains مستقبلية
    */
   app.enableCors({
-    origin: [
-      'http://localhost:19006',
-      'http://localhost:3000',
-      'http://localhost:8081', // ✅ Web Expo
-      'http://127.0.0.1:3000',
-      process.env.EXPO_URL,
-      process.env.FRONTEND_URL,
-    ].filter(Boolean),
+    origin: (origin, callback) => {
+      const allowedOrigins = [
+        'http://localhost:19006',
+        'http://localhost:3000',
+        'http://localhost:8081',
+        'http://127.0.0.1:3000',
+
+        // 👇 أضف S3 هنا
+        'http://kodynex-frontend-440946410696-eu-central-1-an.s3-website.eu-central-1.amazonaws.com',
+
+        // 👇 مستقبلاً CloudFront
+        process.env.FRONTEND_URL,
+      ].filter(Boolean);
+
+      // يسمح للـ requests بدون origin (مثل Postman)
+      if (!origin) return callback(null, true);
+
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+
+      return callback(new Error('Not allowed by CORS'));
+    },
 
     methods: ['GET', 'POST', 'PATCH', 'DELETE', 'PUT', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Tenant', 'x-tenant'],
