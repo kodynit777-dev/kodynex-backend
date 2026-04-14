@@ -208,6 +208,7 @@ model PaymentIntent {
   user   User? @relation(fields: [userId], references: [id])
 
   provider PaymentProvider
+  method String?
   externalId String?
 
   amount   Decimal @db.Decimal(10, 2)
