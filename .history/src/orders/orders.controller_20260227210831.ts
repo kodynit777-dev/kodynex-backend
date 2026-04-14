@@ -35,7 +35,6 @@ export class OrdersController {
       dto.items,
       dto.branchId,
       dto.notes,
-      dto.paymentMethod, // 🔥 هذا أهم سطر
     );
 
     return {

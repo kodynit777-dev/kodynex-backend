@@ -100,18 +100,17 @@ export class OrdersService {
             create: orderItemsData,
           },
           // ✅ الدفع بشكل صحيح
-          paymentIntent:
-            paymentMethod && paymentMethod !== 'cash'
-              ? {
-                  create: {
-                    provider: 'MOYASAR', // مؤقت
-                    method: paymentMethod,
-                    amount: totalPrice,
-                    currency: 'SAR',
-                    status: 'PENDING',
-                  },
-                }
-              : undefined,
+          paymentIntent: paymentMethod
+            ? {
+                create: {
+                  provider: paymentMethod === 'cash' ? null : 'MOYASAR', // 👈 ذكي
+                  method: paymentMethod, // card | cash | apple_pay
+                  amount: totalPrice,
+                  currency: 'SAR',
+                  status: 'PENDING',
+                },
+              }
+            : undefined,
         },
         include: {
           items: {

@@ -33,9 +33,4 @@ export class CreateOrderDto {
   @IsOptional()
   @IsString()
   notes?: string;
-
-  // 🔥 هذا أهم إضافة
-  @IsOptional()
-  @IsString()
-  paymentMethod?: string; // cash | card | apple_pay
 }

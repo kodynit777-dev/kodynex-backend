@@ -18,7 +18,6 @@ export class OrdersService {
     items: { productId: string; quantity: number }[],
     branchId?: string,
     notes?: string,
-    paymentMethod?: string, // 👈 جديد
   ) {
     if (!items || items.length === 0) {
       throw new BadRequestException('السلة فارغة');
@@ -99,19 +98,6 @@ export class OrdersService {
           items: {
             create: orderItemsData,
           },
-          // ✅ الدفع بشكل صحيح
-          paymentIntent:
-            paymentMethod && paymentMethod !== 'cash'
-              ? {
-                  create: {
-                    provider: 'MOYASAR', // مؤقت
-                    method: paymentMethod,
-                    amount: totalPrice,
-                    currency: 'SAR',
-                    status: 'PENDING',
-                  },
-                }
-              : undefined,
         },
         include: {
           items: {
