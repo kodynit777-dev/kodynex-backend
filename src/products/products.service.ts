@@ -38,10 +38,22 @@ export class ProductsService {
         name: dto.name,
         price: dto.price,
         description: dto.description,
-        image: dto.image,
+        imageUrl: dto.imageUrl,
+        imageKey: dto.imageKey,
         restaurantId: tenantRestaurantId,
       },
     });
+    // 🔥 3) تحديث Media → صار مستخدم
+    if (dto.imageKey) {
+      await this.prisma.media.updateMany({
+        where: {
+          key: dto.imageKey,
+        },
+        data: {
+          isUsed: true,
+        },
+      });
+    }
 
     return product;
   }

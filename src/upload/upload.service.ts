@@ -1,9 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { v4 as uuid } from 'uuid';
+import { PrismaService } from '../prisma/prisma.service'; // ✅
 
 @Injectable()
 export class UploadService {
+  constructor(private prisma: PrismaService) {} // ✅
+
   private s3 = new S3Client({
     region: process.env.AWS_REGION,
     credentials: {
@@ -25,6 +28,17 @@ export class UploadService {
     );
 
     const url = `https://${process.env.AWS_BUCKET}.s3.${process.env.AWS_REGION}.amazonaws.com/${key}`;
+
+    // 🔥 حفظ في Media table
+    await this.prisma.media.create({
+      data: {
+        url,
+        key,
+        restaurantId,
+        type: 'IMAGE',
+        isUsed: false,
+      },
+    });
 
     return { url, key };
   }

@@ -32,7 +32,8 @@ export class RestaurantsService {
         name: dto.name,
         slug, // ✅ مهم جدًا
         description: dto.description,
-        logo: dto.logo,
+        logoUrl: dto.logoUrl,
+        logoKey: dto.logoKey,
         ownerId,
       },
     });
@@ -43,7 +44,7 @@ export class RestaurantsService {
       name: restaurant.name,
       slug: restaurant.slug,
       description: restaurant.description,
-      logo: restaurant.logo,
+      llogo: restaurant.logoUrl,
       createdAt: restaurant.createdAt,
     };
   }
@@ -59,7 +60,7 @@ export class RestaurantsService {
       name: r.name,
       slug: r.slug,
       description: r.description,
-      logo: r.logo,
+      logo: r.logoUrl,
       createdAt: r.createdAt,
     }));
   }
@@ -79,7 +80,7 @@ export class RestaurantsService {
       name: restaurant.name,
       slug: restaurant.slug,
       description: restaurant.description,
-      logo: restaurant.logo,
+      llogo: restaurant.logoUrl,
       createdAt: restaurant.createdAt,
     };
   }

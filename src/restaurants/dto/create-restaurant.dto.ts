@@ -11,5 +11,6 @@ export class CreateRestaurantDto {
 
   @IsOptional()
   @IsString()
-  logo?: string;
+  logoUrl?: string;
+  logoKey?: string;
 }
