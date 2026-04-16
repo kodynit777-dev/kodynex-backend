@@ -14,6 +14,7 @@ import { PublicModule } from './public/public.module';
 import { PrismaModule } from './prisma/prisma.module';
 
 import { TenantSettingsModule } from './tenant-settings/tenant-settings.module';
+import { UploadModule } from './upload/upload.module';
 
 @Module({
   imports: [
@@ -36,6 +37,8 @@ import { TenantSettingsModule } from './tenant-settings/tenant-settings.module';
 
     // ⭐ جديد: إعدادات التيننت
     TenantSettingsModule,
+
+    UploadModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -5,8 +5,7 @@
   "author": "",
   "private": true,
   "license": "UNLICENSED",
-
-   "prisma": {
+  "prisma": {
     "seed": "ts-node src/prisma/seed.ts"
   },
   "scripts": {
@@ -27,6 +26,7 @@
     "seed": "ts-node src/prisma/seed.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1030.0",
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.2",
     "@nestjs/core": "^11.0.1",
@@ -36,6 +36,7 @@
     "bcrypt": "^6.0.0",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.3",
+    "multer": "^2.1.1",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
     "reflect-metadata": "^0.2.2",
