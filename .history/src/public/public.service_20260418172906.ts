@@ -37,26 +37,6 @@ export class PublicService {
           orderBy: {
             createdAt: 'asc',
           },
-          include: {
-            optionGroups: {
-              where: {
-                isActive: true,
-              },
-              orderBy: {
-                sortOrder: 'asc',
-              },
-              include: {
-                options: {
-                  where: {
-                    isActive: true,
-                  },
-                  orderBy: {
-                    sortOrder: 'asc',
-                  },
-                },
-              },
-            },
-          },
         },
       },
     });
@@ -76,20 +56,20 @@ export class PublicService {
   /* ============================
    Get Branches By Tenant
    ============================ */
-  async getBranches(tenant: string) {
-    const restaurant = await this.prisma.restaurant.findFirst({
-      where: {
-        slug: tenant,
-      },
-      include: {
-        branches: true, // 🔥 هنا المهم
-      },
-    });
+async getBranches(tenant: string) {
+  const restaurant = await this.prisma.restaurant.findFirst({
+    where: {
+      slug: tenant,
+    },
+    include: {
+      branches: true, // 🔥 هنا المهم
+    },
+  });
 
-    if (!restaurant) {
-      throw new NotFoundException('Restaurant not found');
-    }
-
-    return restaurant.branches;
+  if (!restaurant) {
+    throw new NotFoundException('Restaurant not found');
   }
+
+  return restaurant.branches;
+}
 }

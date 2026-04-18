@@ -65,6 +65,8 @@ model Restaurant {
   auditLogs      AuditLog[]
   media          Media[] // 🔥 أضف هذا السطر
 
+
+
   @@index([ownerId])
   @@index([slug])
   @@index([deletedAt])
@@ -116,10 +118,10 @@ model Product {
 }
 
 model ProductOptionGroup {
-  id String @id @default(cuid())
+  id        String @id @default(cuid())
 
-  name String
-  type OptionGroupType // SINGLE / MULTIPLE
+  name      String
+  type      OptionGroupType // SINGLE / MULTIPLE
 
   isRequired Boolean @default(false)
   minSelect  Int?
@@ -131,7 +133,7 @@ model ProductOptionGroup {
   productId String
   product   Product @relation(fields: [productId], references: [id])
 
-  options ProductOption[]
+  options   ProductOption[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -155,6 +157,7 @@ model ProductOption {
   group   ProductOptionGroup @relation(fields: [groupId], references: [id])
 
   selections OrderItemOptionSelection[]
+
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -181,6 +184,11 @@ model OrderItemOptionSelection {
   @@index([orderItemId])
   @@index([optionId])
 }
+
+
+
+
+
 
 //
 // ===============================
@@ -293,9 +301,10 @@ model OrderItem {
   productId String
   product   Product @relation(fields: [productId], references: [id])
 
-  quantity   Int                        @default(1)
-  price      Decimal                    @db.Decimal(10, 2)
+  quantity Int     @default(1)
+  price    Decimal @db.Decimal(10, 2)
   selections OrderItemOptionSelection[]
+
 
   createdAt DateTime @default(now())
 
