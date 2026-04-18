@@ -49,7 +49,17 @@ async function bootstrap() {
     },
 
     methods: ['GET', 'POST', 'PATCH', 'DELETE', 'PUT', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Tenant', 'x-tenant'],
+    allowedHeaders: [
+  'Content-Type',
+  'Authorization',
+  'X-Tenant',
+  'x-tenant',
+  'Accept',
+  'Cache-Control',
+  'cache-control',
+  'Pragma',
+  'pragma',
+],
     credentials: true,
   });
 

@@ -53,4 +53,23 @@ export class PublicService {
       products: restaurant.products,
     };
   }
+  /* ============================
+   Get Branches By Tenant
+   ============================ */
+async getBranches(tenant: string) {
+  const restaurant = await this.prisma.restaurant.findFirst({
+    where: {
+      slug: tenant,
+    },
+    include: {
+      branches: true, // 🔥 هنا المهم
+    },
+  });
+
+  if (!restaurant) {
+    throw new NotFoundException('Restaurant not found');
+  }
+
+  return restaurant.branches;
+}
 }

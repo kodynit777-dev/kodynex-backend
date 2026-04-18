@@ -20,4 +20,10 @@ export class PublicController {
   async getCatalog(@Param('tenant') tenant: string) {
     return this.publicService.getCatalogByTenant(tenant);
   }
+  
+  @Get(':tenant/branches')
+async getBranches(@Param('tenant') tenant: string) {
+  return this.publicService.getBranches(tenant);
+}
+  
 }
