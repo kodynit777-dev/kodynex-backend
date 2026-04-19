@@ -4,28 +4,32 @@ import {
   ForbiddenException,
   BadRequestException,
 } from '@nestjs/common';
+import { OrderStatus, OptionGroupType, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { OrderStatus } from '@prisma/client';
+
+type CreateOrderItemInput = {
+  productId: string;
+  quantity: number;
+  selectedOptions?: string[];
+};
 
 @Injectable()
 export class OrdersService {
   constructor(private prisma: PrismaService) {}
 
-  // 🛒 إنشاء طلب (Tenant-aware)
   async createOrder(
     userId: string,
-    tenantRestaurantId: string, // 👈 يأتي من req.tenantId
-    items: { productId: string; quantity: number }[],
+    tenantRestaurantId: string,
+    items: CreateOrderItemInput[],
     branchId?: string,
     notes?: string,
-    paymentMethod?: string, // 👈 جديد
+    paymentMethod?: string,
   ) {
     if (!items || items.length === 0) {
       throw new BadRequestException('السلة فارغة');
     }
 
     return this.prisma.$transaction(async (tx) => {
-      // 1️⃣ تحقق أن المطعم موجود (عبر Tenant)
       const restaurant = await tx.restaurant.findUnique({
         where: { id: tenantRestaurantId },
       });
@@ -34,8 +38,7 @@ export class OrdersService {
         throw new NotFoundException('المطعم غير موجود');
       }
 
-      // 2️⃣ تحقق المنتجات (لا يسمح بمنتجات من مطعم آخر)
-      const productIds = items.map((i) => i.productId);
+      const productIds = items.map((item) => item.productId);
 
       const products = await tx.product.findMany({
         where: {
@@ -49,7 +52,8 @@ export class OrdersService {
         throw new BadRequestException('بعض المنتجات غير موجودة');
       }
 
-      // 3️⃣ تحقق الفرع (إن وجد)
+      const productsById = new Map(products.map((product) => [product.id, product]));
+
       if (branchId) {
         const branch = await tx.branch.findFirst({
           where: {
@@ -65,46 +69,169 @@ export class OrdersService {
         }
       }
 
-      // 4️⃣ حساب السعر من DB
-      let totalPrice = 0;
+      const allSelectedOptionIds = items.flatMap(
+        (item) => item.selectedOptions || [],
+      );
 
-      const orderItemsData = items.map((item) => {
-        const product = products.find((p) => p.id === item.productId);
+      const [productOptions, optionGroups] = await Promise.all([
+        tx.productOption.findMany({
+          where: {
+            id: { in: allSelectedOptionIds },
+            isActive: true,
+            group: {
+              productId: { in: productIds },
+              isActive: true,
+            },
+          },
+          include: {
+            group: true,
+          },
+        }),
+        tx.productOptionGroup.findMany({
+          where: {
+            productId: { in: productIds },
+            isActive: true,
+          },
+          select: {
+            id: true,
+            name: true,
+            type: true,
+            isRequired: true,
+            minSelect: true,
+            maxSelect: true,
+            productId: true,
+          },
+        }),
+      ]);
 
-        if (!product) {
-          throw new NotFoundException(`المنتج غير موجود: ${item.productId}`);
-        }
+      const optionsById = new Map(
+        productOptions.map((option) => [option.id, option]),
+      );
+      const optionGroupsByProductId = optionGroups.reduce(
+        (groupsMap, group) => {
+          const groups = groupsMap.get(group.productId) || [];
+          groups.push(group);
+          groupsMap.set(group.productId, groups);
+          return groupsMap;
+        },
+        new Map<string, typeof optionGroups>(),
+      );
 
-        const price = Number(product.price);
-        const subtotal = price * item.quantity;
+      let totalPrice = new Prisma.Decimal(0);
 
-        totalPrice += subtotal;
+      const orderItemsData = await Promise.all(
+        items.map(async (item) => {
+          const product = productsById.get(item.productId);
 
-        return {
-          productId: product.id,
-          quantity: item.quantity,
-          price: product.price, // snapshot
-        };
-      });
+          if (!product) {
+            throw new NotFoundException(`المنتج غير موجود: ${item.productId}`);
+          }
 
-      // 5️⃣ إنشاء الطلب
+          const optionIds = item.selectedOptions || [];
+
+          if (new Set(optionIds).size !== optionIds.length) {
+            throw new BadRequestException('لا يمكن تكرار نفس الخيار');
+          }
+
+          const options = optionIds.map((optionId) => {
+            const option = optionsById.get(optionId);
+
+            if (!option || option.group.productId !== product.id) {
+              throw new BadRequestException('بعض الخيارات غير صالحة');
+            }
+
+            return option;
+          });
+
+          if (options.length !== optionIds.length) {
+            throw new BadRequestException('بعض الخيارات غير صالحة');
+          }
+
+          const productOptionGroups =
+            optionGroupsByProductId.get(product.id) || [];
+
+          const selectedCountByGroup = options.reduce((counts, option) => {
+            const current = counts.get(option.groupId) || 0;
+            counts.set(option.groupId, current + 1);
+            return counts;
+          }, new Map<string, number>());
+
+          for (const group of productOptionGroups) {
+            const selectedCount = selectedCountByGroup.get(group.id) || 0;
+
+            if (group.type === OptionGroupType.SINGLE && selectedCount > 1) {
+              throw new BadRequestException(
+                `لا يمكن اختيار أكثر من خيار من مجموعة ${group.name}`,
+              );
+            }
+
+            if (group.minSelect !== null && selectedCount < group.minSelect) {
+              throw new BadRequestException(
+                `الحد الأدنى لمجموعة ${group.name} هو ${group.minSelect}`,
+              );
+            }
+
+            if (group.maxSelect !== null && selectedCount > group.maxSelect) {
+              throw new BadRequestException(
+                `الحد الأقصى لمجموعة ${group.name} هو ${group.maxSelect}`,
+              );
+            }
+
+            if (group.isRequired && selectedCount === 0) {
+              throw new BadRequestException(
+                `يجب اختيار خيار واحد على الأقل من مجموعة ${group.name}`,
+              );
+            }
+          }
+
+          const optionsPrice = options.reduce(
+            (sum, option) => sum.plus(option.priceDelta),
+            new Prisma.Decimal(0),
+          );
+
+          const basePrice = new Prisma.Decimal(product.price);
+          const finalPrice = basePrice.plus(optionsPrice);
+          const subtotal = finalPrice.times(item.quantity);
+
+          totalPrice = totalPrice.plus(subtotal);
+
+          return {
+            productId: product.id,
+            quantity: item.quantity,
+            price: finalPrice,
+            selections: options.map((option) => ({
+              optionId: option.id,
+              groupName: option.group.name,
+              optionName: option.name,
+              priceDelta: option.priceDelta,
+            })),
+          };
+        }),
+      );
+
       const order = await tx.order.create({
         data: {
           userId,
-          restaurantId: tenantRestaurantId, // 👈 من Tenant فقط
+          restaurantId: tenantRestaurantId,
           branchId,
           notes,
           totalPrice,
           status: OrderStatus.PENDING,
           items: {
-            create: orderItemsData,
+            create: orderItemsData.map((item) => ({
+              productId: item.productId,
+              quantity: item.quantity,
+              price: item.price,
+              selections: {
+                create: item.selections,
+              },
+            })),
           },
-          // ✅ الدفع بشكل صحيح
           paymentIntent:
             paymentMethod && paymentMethod !== 'cash'
               ? {
                   create: {
-                    provider: 'MOYASAR', // مؤقت
+                    provider: 'MOYASAR',
                     method: paymentMethod,
                     amount: totalPrice,
                     currency: 'SAR',
@@ -115,7 +242,10 @@ export class OrdersService {
         },
         include: {
           items: {
-            include: { product: true },
+            include: {
+              product: true,
+              selections: true,
+            },
           },
           restaurant: true,
         },
@@ -125,25 +255,27 @@ export class OrdersService {
     });
   }
 
-  // 👤 عرض طلبات المستخدم (معزولة حسب Tenant)
   async myOrders(userId: string, tenantRestaurantId: string) {
     return this.prisma.order.findMany({
       where: {
         userId,
-        restaurantId: tenantRestaurantId, // 👈 عزل SaaS
+        restaurantId: tenantRestaurantId,
       },
       orderBy: { createdAt: 'desc' },
       include: {
-        items: { include: { product: true } },
+        items: {
+          include: {
+            product: true,
+            selections: true,
+          },
+        },
         restaurant: true,
-        paymentIntent: true, // 🔥🔥🔥 هذا الحل
+        paymentIntent: true,
       },
     });
   }
 
-  // 🏪 عرض طلبات المطعم (Owner check عبر DB)
   async getRestaurantOrders(tenantRestaurantId: string, ownerId: string) {
-    // تحقق الملكية عبر DB (أقوى أمنيًا)
     const restaurant = await this.prisma.restaurant.findFirst({
       where: {
         id: tenantRestaurantId,
@@ -159,7 +291,12 @@ export class OrdersService {
       where: { restaurantId: tenantRestaurantId },
       orderBy: { createdAt: 'desc' },
       include: {
-        items: { include: { product: true } },
+        items: {
+          include: {
+            product: true,
+            selections: true,
+          },
+        },
         user: {
           select: { id: true, name: true },
         },
@@ -167,7 +304,6 @@ export class OrdersService {
     });
   }
 
-  // 🔄 تغيير حالة الطلب (Tenant-aware + Owner check)
   async updateStatus(
     orderId: string,
     ownerId: string,
@@ -177,7 +313,7 @@ export class OrdersService {
     const order = await this.prisma.order.findFirst({
       where: {
         id: orderId,
-        restaurantId: tenantRestaurantId, // 👈 يمنع Cross-tenant
+        restaurantId: tenantRestaurantId,
       },
       include: { restaurant: true },
     });

@@ -17,12 +17,6 @@ class CreateOrderItemDto {
   @IsInt()
   @Min(1)
   quantity: number;
-
-  // 🔥 الجديد
-  @IsOptional()
-  @IsArray()
-  @IsString({ each: true })
-  selectedOptions?: string[];
 }
 
 export class CreateOrderDto {
