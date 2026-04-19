@@ -52,9 +52,7 @@ export class OrdersService {
         throw new BadRequestException('بعض المنتجات غير موجودة');
       }
 
-      const productsById = new Map(
-        products.map((product) => [product.id, product]),
-      );
+      const productsById = new Map(products.map((product) => [product.id, product]));
 
       if (branchId) {
         const branch = await tx.branch.findFirst({
@@ -137,7 +135,8 @@ export class OrdersService {
 
           const options = optionIds.map((optionId) => {
             const option = optionsById.get(optionId);
-            if (!option || option.group?.productId !== product.id) {
+
+            if (!option || option.group.productId !== product.id) {
               throw new BadRequestException('بعض الخيارات غير صالحة');
             }
 
@@ -152,9 +151,8 @@ export class OrdersService {
             optionGroupsByProductId.get(product.id) || [];
 
           const selectedCountByGroup = options.reduce((counts, option) => {
-            const groupId = option.group.id;
-            const current = counts.get(groupId) || 0;
-            counts.set(groupId, current + 1);
+            const current = counts.get(option.groupId) || 0;
+            counts.set(option.groupId, current + 1);
             return counts;
           }, new Map<string, number>());
 

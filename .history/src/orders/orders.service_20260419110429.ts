@@ -152,9 +152,8 @@ export class OrdersService {
             optionGroupsByProductId.get(product.id) || [];
 
           const selectedCountByGroup = options.reduce((counts, option) => {
-            const groupId = option.group.id;
-            const current = counts.get(groupId) || 0;
-            counts.set(groupId, current + 1);
+            const current = counts.get(option.groupId) || 0;
+            counts.set(option.groupId, current + 1);
             return counts;
           }, new Map<string, number>());
 
